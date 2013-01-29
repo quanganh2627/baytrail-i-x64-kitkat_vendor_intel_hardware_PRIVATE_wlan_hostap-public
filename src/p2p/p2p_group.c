@@ -999,6 +999,13 @@ int p2p_group_is_group_id_match(struct p2p_group *group, const u8 *group_id,
 	if (group_id_len != ETH_ALEN + group->cfg->ssid_len)
 		return 0;
 	if (os_memcmp(group_id, group->p2p->cfg->dev_addr, ETH_ALEN) != 0)
+		/*
+		 * Sending broadcast address actually violates the spec.
+		 * However, some testbeds send it, so we must allow it
+		 * in order to pass the certification tests.
+		 */
+		if (os_memcmp(group_id, broadcast_ether_addr, ETH_ALEN) != 0 &&
+		    os_memcmp(group_id, group->cfg->interface_addr, ETH_ALEN))
 		return 0;
 	return os_memcmp(group_id + ETH_ALEN, group->cfg->ssid,
 			 group->cfg->ssid_len) == 0;
