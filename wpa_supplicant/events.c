@@ -3312,6 +3312,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 					data->eapol_rx.data_len);
 		break;
 	case EVENT_SIGNAL_CHANGE:
+		wpa_bss_update_level(wpa_s->current_bss,
+				     data->signal_change.current_signal);
+
 		bgscan_notify_signal_change(
 			wpa_s, data->signal_change.above_threshold,
 			data->signal_change.current_signal,

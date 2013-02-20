@@ -132,4 +132,10 @@ int wpa_bss_get_bit_rates(const struct wpa_bss *bss, u8 **rates);
 struct wpa_bss_anqp * wpa_bss_anqp_alloc(void);
 int wpa_bss_anqp_unshare_alloc(struct wpa_bss *bss);
 
+static inline void wpa_bss_update_level(struct wpa_bss *bss, int new_level)
+{
+	if (bss != NULL && new_level < 0)
+		bss->level = new_level;
+}
+
 #endif /* BSS_H */
