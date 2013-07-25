@@ -10696,7 +10696,6 @@ const u8 * wpa_driver_nl80211_get_macaddr(void *priv)
 	return bss->addr;
 }
 
-
 const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.name = "nl80211",
 	.desc = "Linux nl80211/cfg80211",
