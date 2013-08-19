@@ -1235,16 +1235,43 @@ void wpa_supplicant_cancel_delayed_sched_scan(struct wpa_supplicant *wpa_s)
  * wpa_supplicant_cancel_sched_scan - Stop running scheduled scans
  * @wpa_s: Pointer to wpa_supplicant data
  *
- * This function is used to stop a periodic scheduled scan.
+ * This function is used to stop a periodic scheduled scan on all interfaces
+ * that share the same radio.
  */
 void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 {
+	struct wpa_supplicant *iface;
+	const char *rn, *rn2;
+
 	if (!wpa_s->sched_scanning)
 		return;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Cancelling sched scan");
 	eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, wpa_s, NULL);
 	wpa_supplicant_stop_sched_scan(wpa_s);
+
+	/* Cancel scheduled scan on other interfaces */
+	if (!wpa_s->driver->get_radio_name)
+		return;
+
+	rn = wpa_s->driver->get_radio_name(wpa_s->drv_priv);
+
+	if (!rn || rn[0] == '\0')
+		return;
+
+	for (iface = wpa_s->global->ifaces; iface; iface = iface->next) {
+		if (iface == wpa_s || !iface->driver->get_radio_name)
+			continue;
+
+		rn2 = iface->driver->get_radio_name(iface->drv_priv);
+		if (!rn2 || os_strcmp(rn, rn2) != 0)
+			continue;
+
+		eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, iface,
+				     NULL);
+		wpa_supplicant_stop_sched_scan(iface);
+	}
+
 }
 
 
