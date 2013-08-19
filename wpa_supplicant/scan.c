@@ -1243,12 +1243,12 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 	struct wpa_supplicant *iface;
 	const char *rn, *rn2;
 
-	if (!wpa_s->sched_scanning)
-		return;
-
-	wpa_dbg(wpa_s, MSG_DEBUG, "Cancelling sched scan");
-	eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, wpa_s, NULL);
-	wpa_supplicant_stop_sched_scan(wpa_s);
+	if (wpa_s->sched_scanning) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Cancelling sched scan");
+		eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, wpa_s,
+				     NULL);
+		wpa_supplicant_stop_sched_scan(wpa_s);
+	}
 
 	/* Cancel scheduled scan on other interfaces */
 	if (!wpa_s->driver->get_radio_name)
@@ -1260,7 +1260,8 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 		return;
 
 	for (iface = wpa_s->global->ifaces; iface; iface = iface->next) {
-		if (iface == wpa_s || !iface->driver->get_radio_name)
+		if (iface == wpa_s || !iface->driver->get_radio_name ||
+		    !iface->sched_scanning)
 			continue;
 
 		rn2 = iface->driver->get_radio_name(iface->drv_priv);
