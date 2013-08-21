@@ -9,6 +9,7 @@
 #ifndef IBSS_RSN_H
 #define IBSS_RSN_H
 
+#include "utils/traffic_stats.h"
 struct ibss_rsn;
 
 /* not authenticated */
@@ -36,6 +37,8 @@ struct ibss_rsn_peer {
 	enum wpa_states supp_state;
 	u8 supp_ie[80];
 	size_t supp_ie_len;
+
+	struct traffic_info traffic_data;
 
 	struct wpa_state_machine *auth;
 	int authentication_status;

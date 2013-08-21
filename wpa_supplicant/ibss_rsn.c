@@ -535,6 +535,7 @@ ibss_rsn_peer_init(struct ibss_rsn *ibss_rsn, const u8 *addr)
 	peer->ibss_rsn = ibss_rsn;
 	os_memcpy(peer->addr, addr, ETH_ALEN);
 	peer->authentication_status = IBSS_RSN_AUTH_NOT_AUTHENTICATED;
+	traffic_stats_reset(peer->traffic_data);
 
 	if (ibss_rsn_supp_init(peer, ibss_rsn->wpa_s->own_addr,
 			       ibss_rsn->psk) < 0) {
