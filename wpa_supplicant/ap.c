@@ -501,7 +501,7 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 	if (wpa_s->parent->set_ap_uapsd)
 		params.uapsd = wpa_s->parent->ap_uapsd;
 	else
-		params.uapsd = -1;
+		params.uapsd = !!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_AP_UAPSD);
 
 	if (wpa_drv_associate(wpa_s, &params) < 0) {
 		wpa_msg(wpa_s, MSG_INFO, "Failed to start AP functionality");
