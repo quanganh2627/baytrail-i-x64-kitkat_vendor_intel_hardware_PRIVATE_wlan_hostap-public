@@ -469,6 +469,7 @@ int hostapd_set_freq(struct hostapd_data *hapd, int mode, int freq,
 		     int center_segment0, int center_segment1)
 {
 	struct hostapd_freq_params data;
+	u32 vht_caps;
 	int tmp;
 
 	os_memset(&data, 0, sizeof(data));
@@ -482,6 +483,8 @@ int hostapd_set_freq(struct hostapd_data *hapd, int mode, int freq,
 	data.center_freq2 = 0;
 	data.bandwidth = sec_channel_offset ? 40 : 20;
 
+	vht_caps = hapd->iface->current_mode->vht_capab;
+
 	/*
 	 * This validation code is probably misplaced, maybe it should be
 	 * in src/ap/hw_features.c and check the hardware support as well.
@@ -494,6 +497,11 @@ int hostapd_set_freq(struct hostapd_data *hapd, int mode, int freq,
 			return -1;
 		break;
 	case VHT_CHANWIDTH_80P80MHZ:
+		if (!(vht_caps & VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ)) {
+			wpa_printf(MSG_ERROR,
+				   "80+80 channel width is not supported!");
+			return -1;
+		}
 		if (center_segment1 == center_segment0 + 4 ||
 		    center_segment1 == center_segment0 - 4)
 			return -1;
@@ -517,6 +525,12 @@ int hostapd_set_freq(struct hostapd_data *hapd, int mode, int freq,
 		break;
 	case VHT_CHANWIDTH_160MHZ:
 		data.bandwidth = 160;
+		if (!(vht_caps & (VHT_CAP_SUPP_CHAN_WIDTH_160MHZ |
+				  VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ))) {
+			wpa_printf(MSG_ERROR,
+				   "160MHZ channel width is not supported!");
+			return -1;
+		}
 		if (center_segment1)
 			return -1;
 		if (!sec_channel_offset)
