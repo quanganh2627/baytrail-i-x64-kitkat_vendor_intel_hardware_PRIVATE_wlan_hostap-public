@@ -485,6 +485,7 @@ struct wpa_supplicant {
 	struct os_time scan_trigger_time;
 	int scan_runs; /* number of scan runs since WPS was started */
 	int *next_scan_freqs;
+	int last_scan_optimized;
 	int scan_interval; /* time in sec between scans to find suitable AP */
 	int normal_scans; /* normal scans run before sched_scan */
 	int scan_for_connection; /* whether the scan request was triggered for

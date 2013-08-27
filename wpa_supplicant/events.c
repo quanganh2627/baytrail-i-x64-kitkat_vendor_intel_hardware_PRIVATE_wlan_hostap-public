@@ -1306,7 +1306,8 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 			if (new_scan)
 				wpa_supplicant_rsn_preauth_scan_results(wpa_s);
 		} else {
-			int timeout_sec = wpa_s->scan_interval;
+			int timeout_sec = wpa_s->last_scan_optimized ?
+						0 : wpa_s->scan_interval;
 			int timeout_usec = 0;
 #ifdef CONFIG_P2P
 			if (wpas_p2p_scan_no_go_seen(wpa_s) == 1)

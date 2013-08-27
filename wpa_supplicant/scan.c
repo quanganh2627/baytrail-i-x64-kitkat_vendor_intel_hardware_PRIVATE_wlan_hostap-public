@@ -776,8 +776,11 @@ ssid_list_set:
 		wpa_dbg(wpa_s, MSG_DEBUG, "Optimize scan based on previously "
 			"generated frequency list");
 		params.freqs = wpa_s->next_scan_freqs;
-	} else
+		wpa_s->last_scan_optimized = 1;
+	} else {
 		os_free(wpa_s->next_scan_freqs);
+		wpa_s->last_scan_optimized = 0;
+	}
 	wpa_s->next_scan_freqs = NULL;
 	wpa_setband_scan_freqs(wpa_s, &params);
 
