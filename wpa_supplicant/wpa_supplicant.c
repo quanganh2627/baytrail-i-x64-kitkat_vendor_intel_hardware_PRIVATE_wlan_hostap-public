@@ -459,7 +459,9 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	offchannel_deinit(wpa_s);
 #endif /* CONFIG_OFFCHANNEL */
 
-	wpa_supplicant_cancel_sched_scan(wpa_s);
+	/* no need to stop sched scans if the driver failed to initialize */
+	if (wpa_s->drv_priv)
+		wpa_supplicant_cancel_sched_scan(wpa_s);
 
 	os_free(wpa_s->next_scan_freqs);
 	wpa_s->next_scan_freqs = NULL;
