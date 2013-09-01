@@ -1094,6 +1094,7 @@ static void wpas_start_wps_go(struct wpa_supplicant *wpa_s,
 		WPAS_MODE_P2P_GO;
 	ssid->frequency = params->freq;
 	ssid->ht40 = params->ht40;
+	ssid->vht = params->vht;
 	ssid->ssid = os_zalloc(params->ssid_len + 1);
 	if (ssid->ssid) {
 		os_memcpy(ssid->ssid, params->ssid, params->ssid_len);
@@ -1342,6 +1343,8 @@ void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
 
 	if (wpa_s->p2p_go_ht40)
 		res->ht40 = 1;
+	if (wpa_s->p2p_go_vht)
+		res->vht = 1;
 
 	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_GO_NEG_SUCCESS "role=%s "
 		       "freq=%d ht40=%d peer_dev=" MACSTR " peer_iface=" MACSTR
@@ -2764,7 +2767,7 @@ static void wpas_invitation_received(void *ctx, const u8 *sa, const u8 *bssid,
 		if (s) {
 			int go = s->mode == WPAS_MODE_P2P_GO;
 			wpas_p2p_group_add_persistent(
-				wpa_s, s, go, go ? op_freq : 0, 0, NULL,
+				wpa_s, s, go, go ? op_freq : 0, 0, 0, NULL,
 				go ? P2P_MAX_INITIAL_CONN_WAIT_GO_REINVOKE : 0);
 		} else if (bssid) {
 			wpa_s->user_initiated_pd = 0;
@@ -2940,7 +2943,8 @@ static void wpas_invitation_result(void *ctx, int status, const u8 *bssid,
 	wpas_p2p_group_add_persistent(wpa_s, ssid,
 				      ssid->mode == WPAS_MODE_P2P_GO,
 				      wpa_s->p2p_persistent_go_freq,
-				      wpa_s->p2p_go_ht40, channels,
+				      wpa_s->p2p_go_ht40, wpa_s->p2p_go_vht,
+				      channels,
 				      ssid->mode == WPAS_MODE_P2P_GO ?
 				      P2P_MAX_INITIAL_CONN_WAIT_GO_REINVOKE :
 				      0);
@@ -3774,7 +3778,8 @@ static void wpas_p2p_scan_res_join(struct wpa_supplicant *wpa_s,
 					 wpa_s->p2p_connect_freq,
 					 wpa_s->p2p_persistent_id,
 					 wpa_s->p2p_pd_before_go_neg,
-					 wpa_s->p2p_go_ht40);
+					 wpa_s->p2p_go_ht40,
+					 wpa_s->p2p_go_vht);
 			return;
 		}
 
@@ -4145,6 +4150,7 @@ exit_free:
  * @pd: Whether to send Provision Discovery prior to GO Negotiation as an
  *	interoperability workaround when initiating group formation
  * @ht40: Start GO with 40 MHz channel width
+ * @vht:  Start GO with VHT support
  * Returns: 0 or new PIN (if pin was %NULL) on success, -1 on unspecified
  *	failure, -2 on failure due to channel not currently available,
  *	-3 if forced channel is not supported
@@ -4153,7 +4159,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		     const char *pin, enum p2p_wps_method wps_method,
 		     int persistent_group, int auto_join, int join, int auth,
 		     int go_intent, int freq, int persistent_id, int pd,
-		     int ht40)
+		     int ht40, int vht)
 {
 	int force_freq = 0, pref_freq = 0;
 	int ret = 0, res;
@@ -4188,6 +4194,7 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	wpa_s->p2p_fallback_to_go_neg = 0;
 	wpa_s->p2p_pd_before_go_neg = !!pd;
 	wpa_s->p2p_go_ht40 = !!ht40;
+	wpa_s->p2p_go_vht = !!vht;
 
 	if (pin)
 		os_strlcpy(wpa_s->p2p_pin, pin, sizeof(wpa_s->p2p_pin));
@@ -4441,7 +4448,7 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 
 static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 				   struct p2p_go_neg_results *params,
-				   int freq, int ht40,
+				   int freq, int ht40, int vht,
 				   const struct p2p_channels *channels)
 {
 	int res, *freqs;
@@ -4451,6 +4458,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 	os_memset(params, 0, sizeof(*params));
 	params->role_go = 1;
 	params->ht40 = ht40;
+	params->vht = vht;
 	if (freq) {
 		if (!freq_included(channels, freq)) {
 			wpa_printf(MSG_DEBUG, "P2P: Forced GO freq %d MHz not "
@@ -4623,7 +4631,7 @@ wpas_p2p_get_group_iface(struct wpa_supplicant *wpa_s, int addr_allocated,
  * i.e., without using Group Owner Negotiation.
  */
 int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
-		       int freq, int ht40)
+		       int freq, int ht40, int vht)
 {
 	struct p2p_go_neg_results params;
 
@@ -4641,7 +4649,7 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
 	if (freq < 0)
 		return -1;
 
-	if (wpas_p2p_init_go_params(wpa_s, &params, freq, ht40, NULL))
+	if (wpas_p2p_init_go_params(wpa_s, &params, freq, ht40, vht, NULL))
 		return -1;
 	if (params.freq &&
 	    !p2p_supported_freq(wpa_s->global->p2p, params.freq)) {
@@ -4709,7 +4717,7 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
 
 int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
 				  struct wpa_ssid *ssid, int addr_allocated,
-				  int freq, int ht40,
+				  int freq, int ht40, int vht,
 				  const struct p2p_channels *channels,
 				  int connection_timeout)
 {
@@ -4744,7 +4752,7 @@ int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
 	if (freq < 0)
 		return -1;
 
-	if (wpas_p2p_init_go_params(wpa_s, &params, freq, ht40, channels))
+	if (wpas_p2p_init_go_params(wpa_s, &params, freq, ht40, vht, channels))
 		return -1;
 
 	params.role_go = 1;
@@ -5205,7 +5213,7 @@ int wpas_p2p_reject(struct wpa_supplicant *wpa_s, const u8 *addr)
 /* Invite to reinvoke a persistent group */
 int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 		    struct wpa_ssid *ssid, const u8 *go_dev_addr, int freq,
-		    int ht40, int pref_freq)
+		    int ht40, int vht, int pref_freq)
 {
 	enum p2p_invite_role role;
 	u8 *bssid = NULL;
@@ -5276,6 +5284,7 @@ int wpas_p2p_invite_group(struct wpa_supplicant *wpa_s, const char *ifname,
 
 	wpa_s->p2p_persistent_go_freq = 0;
 	wpa_s->p2p_go_ht40 = 0;
+	wpa_s->p2p_go_vht = 0;
 
 	for (wpa_s = global->ifaces; wpa_s; wpa_s = wpa_s->next) {
 		if (os_strcmp(wpa_s->ifname, ifname) == 0)
@@ -6145,7 +6154,8 @@ static void wpas_p2p_fallback_to_go_neg(struct wpa_supplicant *wpa_s,
 			 0, 0, wpa_s->p2p_go_intent, wpa_s->p2p_connect_freq,
 			 wpa_s->p2p_persistent_id,
 			 wpa_s->p2p_pd_before_go_neg,
-			 wpa_s->p2p_go_ht40);
+			 wpa_s->p2p_go_ht40,
+			 wpa_s->p2p_go_vht);
 }
 
 
