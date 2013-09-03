@@ -354,6 +354,7 @@ static int wpa_driver_nl80211_authenticate_retry(
 
 static int i802_set_iface_flags(struct i802_bss *bss, int up);
 
+
 static const char * nl80211_command_to_string(enum nl80211_commands cmd)
 {
 #define C2S(x) case x: return #x;
@@ -1283,7 +1284,9 @@ static unsigned int nl80211_get_assoc_freq(struct wpa_driver_nl80211_data *drv)
 		wpa_printf(MSG_DEBUG, "nl80211: Operating frequency for the "
 			   "associated BSS from scan results: %u MHz",
 			   arg.assoc_freq);
-		return arg.assoc_freq ? arg.assoc_freq : drv->assoc_freq;
+		if (arg.assoc_freq)
+			drv->assoc_freq = arg.assoc_freq;
+		return drv->assoc_freq;
 	}
 	wpa_printf(MSG_DEBUG, "nl80211: Scan result fetch failed: ret=%d "
 		   "(%s)", ret, strerror(-ret));
@@ -4186,6 +4189,7 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 	(void) i802_set_iface_flags(bss, 0);
 	if (drv->nlmode != NL80211_IFTYPE_P2P_DEVICE) {
 		wpa_driver_nl80211_set_mode(bss, NL80211_IFTYPE_STATION);
+		nl80211_mgmt_unsubscribe(bss, "deinit");
 	} else {
 		nl80211_mgmt_unsubscribe(bss, "deinit");
 		nl80211_del_p2pdev(bss);
@@ -6710,6 +6714,9 @@ static int wpa_driver_nl80211_sta_remove(struct i802_bss *bss, const u8 *addr)
 	NLA_PUT(msg, NL80211_ATTR_MAC, ETH_ALEN, addr);
 
 	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	wpa_printf(MSG_DEBUG, "nl80211: sta_remove -> DEL_STATION %s " MACSTR
+		   " --> %d (%s)",
+		   bss->ifname, MAC2STR(addr), ret, strerror(-ret));
 	if (ret == -ENOENT)
 		return 0;
 	return ret;
@@ -7680,7 +7687,9 @@ static int wpa_driver_nl80211_try_connect(
 	if (params->freq) {
 		wpa_printf(MSG_DEBUG, "  * freq=%d", params->freq);
 		NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, params->freq);
-	}
+		drv->assoc_freq = params->freq;
+	} else
+		drv->assoc_freq = 0;
 	if (params->bg_scan_period >= 0) {
 		wpa_printf(MSG_DEBUG, "  * bg scan period=%d",
 			   params->bg_scan_period);
@@ -8410,6 +8419,8 @@ static int i802_flush(void *priv)
 	if (!msg)
 		return -1;
 
+	wpa_printf(MSG_DEBUG, "nl80211: flush -> DEL_STATION %s (all)",
+		   bss->ifname);
 	nl80211_cmd(drv, msg, 0, NL80211_CMD_DEL_STATION);
 
 	/*
@@ -9579,9 +9590,11 @@ static int wpa_driver_nl80211_deinit_ap(void *priv)
 		return -1;
 	wpa_driver_nl80211_del_beacon(drv);
 
-	/* If the P2P GO interface was dynamically added, then it is
-	 * possible that the interface change to station is not possible */
-	if ((drv->nlmode == NL80211_IFTYPE_P2P_GO) && bss->if_dynamic)
+	/*
+	 * If the P2P GO interface was dynamically added, then it is
+	 * possible that the interface change to station is not possible.
+	 */
+	if (drv->nlmode == NL80211_IFTYPE_P2P_GO && bss->if_dynamic)
 		return 0;
 
 	return wpa_driver_nl80211_set_mode(priv, NL80211_IFTYPE_STATION);
@@ -9607,10 +9620,13 @@ static int wpa_driver_nl80211_deinit_p2p_cli(void *priv)
 	if (drv->nlmode != NL80211_IFTYPE_P2P_CLIENT)
 		return -1;
 
-	/* If the P2P Client interface was dynamically added, then it is
-	 * possible that the interface change to station is not possible */
+	/*
+	 * If the P2P Client interface was dynamically added, then it is
+	 * possible that the interface change to station is not possible.
+	 */
 	if (bss->if_dynamic)
 		return 0;
+
 	return wpa_driver_nl80211_set_mode(priv, NL80211_IFTYPE_STATION);
 }
 
@@ -9998,6 +10014,185 @@ static int nl80211_flush_pmkid(void *priv)
 	struct i802_bss *bss = priv;
 	wpa_printf(MSG_DEBUG, "nl80211: Flush PMKIDs");
 	return nl80211_pmkid(bss, NL80211_CMD_FLUSH_PMKSA, NULL, NULL);
+}
+
+
+static void clean_survey_results(struct survey_results *survey_results)
+{
+	struct freq_survey *survey, *tmp;
+
+	if (dl_list_empty(&survey_results->survey_list))
+		return;
+
+	dl_list_for_each_safe(survey, tmp, &survey_results->survey_list,
+			      struct freq_survey, list) {
+		dl_list_del(&survey->list);
+		os_free(survey);
+	}
+}
+
+
+static void add_survey(struct nlattr **sinfo, u32 ifidx,
+		       struct dl_list *survey_list)
+{
+	struct freq_survey *survey;
+
+	survey = os_zalloc(sizeof(struct freq_survey));
+	if  (!survey)
+		return;
+
+	survey->ifidx = ifidx;
+	survey->freq = nla_get_u32(sinfo[NL80211_SURVEY_INFO_FREQUENCY]);
+	survey->filled = 0;
+
+	if (sinfo[NL80211_SURVEY_INFO_NOISE]) {
+		survey->nf = (int8_t)
+			nla_get_u8(sinfo[NL80211_SURVEY_INFO_NOISE]);
+		survey->filled |= SURVEY_HAS_NF;
+	}
+
+	if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME]) {
+		survey->channel_time =
+			nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME]);
+		survey->filled |= SURVEY_HAS_CHAN_TIME;
+	}
+
+	if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_BUSY]) {
+		survey->channel_time_busy =
+			nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_BUSY]);
+		survey->filled |= SURVEY_HAS_CHAN_TIME_BUSY;
+	}
+
+	if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_RX]) {
+		survey->channel_time_rx =
+			nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_RX]);
+		survey->filled |= SURVEY_HAS_CHAN_TIME_RX;
+	}
+
+	if (sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_TX]) {
+		survey->channel_time_tx =
+			nla_get_u64(sinfo[NL80211_SURVEY_INFO_CHANNEL_TIME_TX]);
+		survey->filled |= SURVEY_HAS_CHAN_TIME_TX;
+	}
+
+	wpa_printf(MSG_DEBUG, "nl80211: Freq survey dump event (freq=%d MHz noise=%d channel_time=%ld busy_time=%ld tx_time=%ld rx_time=%ld filled=%04x)",
+		   survey->freq,
+		   survey->nf,
+		   (unsigned long int) survey->channel_time,
+		   (unsigned long int) survey->channel_time_busy,
+		   (unsigned long int) survey->channel_time_tx,
+		   (unsigned long int) survey->channel_time_rx,
+		   survey->filled);
+
+	dl_list_add_tail(survey_list, &survey->list);
+}
+
+
+static int check_survey_ok(struct nlattr **sinfo, u32 surveyed_freq,
+			   unsigned int freq_filter)
+{
+	if (!freq_filter)
+		return 1;
+
+	return freq_filter == surveyed_freq;
+}
+
+
+static int survey_handler(struct nl_msg *msg, void *arg)
+{
+	struct nlattr *tb[NL80211_ATTR_MAX + 1];
+	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+	struct nlattr *sinfo[NL80211_SURVEY_INFO_MAX + 1];
+	struct survey_results *survey_results;
+	u32 surveyed_freq = 0;
+	u32 ifidx;
+
+	static struct nla_policy survey_policy[NL80211_SURVEY_INFO_MAX + 1] = {
+		[NL80211_SURVEY_INFO_FREQUENCY] = { .type = NLA_U32 },
+		[NL80211_SURVEY_INFO_NOISE] = { .type = NLA_U8 },
+	};
+
+	survey_results = (struct survey_results *) arg;
+
+	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
+		  genlmsg_attrlen(gnlh, 0), NULL);
+
+	ifidx = nla_get_u32(tb[NL80211_ATTR_IFINDEX]);
+
+	if (!tb[NL80211_ATTR_SURVEY_INFO])
+		return NL_SKIP;
+
+	if (nla_parse_nested(sinfo, NL80211_SURVEY_INFO_MAX,
+			     tb[NL80211_ATTR_SURVEY_INFO],
+			     survey_policy))
+		return NL_SKIP;
+
+	if (!sinfo[NL80211_SURVEY_INFO_FREQUENCY]) {
+		wpa_printf(MSG_ERROR, "nl80211: Invalid survey data");
+		return NL_SKIP;
+	}
+
+	surveyed_freq = nla_get_u32(sinfo[NL80211_SURVEY_INFO_FREQUENCY]);
+
+	if (!check_survey_ok(sinfo, surveyed_freq,
+			     survey_results->freq_filter))
+		return NL_SKIP;
+
+	if (survey_results->freq_filter &&
+	    survey_results->freq_filter != surveyed_freq) {
+		wpa_printf(MSG_EXCESSIVE, "nl80211: Ignoring survey data for freq %d MHz",
+			   surveyed_freq);
+		return NL_SKIP;
+	}
+
+	add_survey(sinfo, ifidx, &survey_results->survey_list);
+
+	return NL_SKIP;
+}
+
+
+static int wpa_driver_nl80211_get_survey(void *priv, unsigned int freq)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nl_msg *msg;
+	int err = -ENOBUFS;
+	union wpa_event_data data;
+	struct survey_results *survey_results;
+
+	os_memset(&data, 0, sizeof(data));
+	survey_results = &data.survey_results;
+
+	dl_list_init(&survey_results->survey_list);
+
+	msg = nlmsg_alloc();
+	if (!msg)
+		goto nla_put_failure;
+
+	nl80211_cmd(drv, msg, NLM_F_DUMP, NL80211_CMD_GET_SURVEY);
+
+	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, drv->ifindex);
+
+	if (freq)
+		data.survey_results.freq_filter = freq;
+
+	do {
+		wpa_printf(MSG_DEBUG, "nl80211: Fetch survey data");
+		err = send_and_recv_msgs(drv, msg, survey_handler,
+					 survey_results);
+	} while (err > 0);
+
+	if (err) {
+		wpa_printf(MSG_ERROR, "nl80211: Failed to process survey data");
+		goto out_clean;
+	}
+
+	wpa_supplicant_event(drv->ctx, EVENT_SURVEY, &data);
+
+out_clean:
+	clean_survey_results(survey_results);
+nla_put_failure:
+	return err;
 }
 
 
@@ -10776,6 +10971,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 #endif /* CONFIG_TDLS */
 	.update_ft_ies = wpa_driver_nl80211_update_ft_ies,
 	.get_mac_addr = wpa_driver_nl80211_get_macaddr,
+	.get_survey = wpa_driver_nl80211_get_survey,
 #ifdef ANDROID
 	.driver_cmd = wpa_driver_nl80211_driver_cmd,
 #endif /* ANDROID */

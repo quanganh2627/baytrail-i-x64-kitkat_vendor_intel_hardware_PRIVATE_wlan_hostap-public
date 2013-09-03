@@ -186,6 +186,7 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 		eapol_sm_notify_eap_success(wpa_s->eapol, FALSE);
 	wpa_s->ap_ies_from_associnfo = 0;
 	wpa_s->current_ssid = NULL;
+	eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
 	wpa_s->key_mgmt = 0;
 }
 
@@ -271,7 +272,7 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 {
 #ifdef IEEE8021X_EAPOL
 #ifdef PCSC_FUNCS
-	int aka = 0, sim = 0, type;
+	int aka = 0, sim = 0;
 
 	if (ssid->eap.pcsc == NULL || wpa_s->scard != NULL)
 		return 0;
@@ -310,14 +311,9 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Selected network is configured to use SIM "
 		"(sim=%d aka=%d) - initialize PCSC", sim, aka);
-	if (sim && aka)
-		type = SCARD_TRY_BOTH;
-	else if (aka)
-		type = SCARD_USIM_ONLY;
-	else
-		type = SCARD_GSM_SIM_ONLY;
 
-	wpa_s->scard = scard_init(type, NULL);
+	wpa_s->scard = scard_init((!sim && aka) ? SCARD_USIM_ONLY :
+				  SCARD_TRY_BOTH, NULL);
 	if (wpa_s->scard == NULL) {
 		wpa_msg(wpa_s, MSG_WARNING, "Failed to initialize SIM "
 			"(pcsc-lite)");
@@ -333,10 +329,24 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 
 
 #ifndef CONFIG_NO_SCAN_PROCESSING
+
+static int has_wep_key(struct wpa_ssid *ssid)
+{
+	int i;
+
+	for (i = 0; i < NUM_WEP_KEYS; i++) {
+		if (ssid->wep_key_len[i])
+			return 1;
+	}
+
+	return 0;
+}
+
+
 static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
 					struct wpa_ssid *ssid)
 {
-	int i, privacy = 0;
+	int privacy = 0;
 
 	if (ssid->mixed_cell)
 		return 1;
@@ -346,12 +356,9 @@ static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
 		return 1;
 #endif /* CONFIG_WPS */
 
-	for (i = 0; i < NUM_WEP_KEYS; i++) {
-		if (ssid->wep_key_len[i]) {
-			privacy = 1;
-			break;
-		}
-	}
+	if (has_wep_key(ssid))
+		privacy = 1;
+
 #ifdef IEEE8021X_EAPOL
 	if ((ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA) &&
 	    ssid->eapol_flags & (EAPOL_FLAG_REQUIRE_KEY_UNICAST |
@@ -815,6 +822,12 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		    !(ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - non-WPA network "
 				"not allowed");
+			continue;
+		}
+
+		if (wpa && !wpa_key_mgmt_wpa(ssid->key_mgmt) &&
+		    has_wep_key(ssid)) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - ignore WPA/WPA2 AP for WEP network block");
 			continue;
 		}
 
@@ -2009,6 +2022,8 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 	if (could_be_psk_mismatch(wpa_s, reason_code, locally_generated)) {
 		wpa_msg(wpa_s, MSG_INFO, "WPA: 4-Way Handshake failed - "
 			"pre-shared key may be incorrect");
+		if (wpas_p2p_4way_hs_failed(wpa_s) > 0)
+			return; /* P2P group removed */
 		wpas_auth_failed(wpa_s);
 	}
 	if (!wpa_s->disconnected &&
@@ -2460,7 +2475,7 @@ static void wpas_event_disconnect(struct wpa_supplicant *wpa_s, const u8 *addr,
 		wpas_auth_failed(wpa_s);
 
 #ifdef CONFIG_P2P
-	if (deauth && ie && ie_len > 0) {
+	if (deauth && reason_code > 0) {
 		if (wpas_p2p_deauth_notif(wpa_s, addr, reason_code, ie, ie_len,
 					  locally_generated) > 0) {
 			/*

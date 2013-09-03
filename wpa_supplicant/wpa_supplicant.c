@@ -1962,8 +1962,10 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 		return;
 	}
 
-	if (ssid)
+	if (ssid) {
 		wpa_s->current_ssid = ssid;
+		eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
+	}
 	wpa_s->connect_without_scan = NULL;
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
@@ -3525,6 +3527,7 @@ void wpa_supplicant_deinit(struct wpa_global *global)
 	os_free(global->params.override_ctrl_interface);
 
 	os_free(global->p2p_disallow_freq);
+	os_free(global->add_psk);
 
 	os_free(global);
 	wpa_debug_close_syslog();

@@ -223,10 +223,7 @@ int wps_build_rf_bands(struct wps_device_data *dev, struct wpabuf *msg,
 	wpa_printf(MSG_DEBUG, "WPS:  * RF Bands (%x)", dev->rf_bands);
 	wpabuf_put_be16(msg, ATTR_RF_BANDS);
 	wpabuf_put_be16(msg, 1);
-	if (rf_band)
-		wpabuf_put_u8(msg, rf_band);
-	else
-		wpabuf_put_u8(msg, dev->rf_bands);
+	wpabuf_put_u8(msg, rf_band ? rf_band : dev->rf_bands);
 	return 0;
 }
 
