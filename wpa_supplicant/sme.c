@@ -414,7 +414,7 @@ static void sme_send_authentication(struct wpa_supplicant *wpa_s,
 	if (wpa_drv_authenticate(wpa_s, &params) < 0) {
 		wpa_msg(wpa_s, MSG_INFO, "SME: Authentication request to the "
 			"driver failed");
-		wpas_connection_failed(wpa_s, bss->bssid);
+		wpas_connection_failed(wpa_s, bss->bssid, 1);
 		wpa_supplicant_mark_disassoc(wpa_s);
 		wpabuf_free(resp);
 		return;
@@ -559,7 +559,7 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 				   data->auth.status_code, data->auth.ies,
 				   data->auth.ies_len);
 		if (res < 0) {
-			wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+			wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 
 		}
@@ -580,7 +580,7 @@ void sme_event_auth(struct wpa_supplicant *wpa_s, union wpa_event_data *data)
 		    WLAN_STATUS_NOT_SUPPORTED_AUTH_ALG ||
 		    wpa_s->sme.auth_alg == data->auth.auth_type ||
 		    wpa_s->current_ssid->auth_alg == WPA_AUTH_ALG_LEAP) {
-			wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+			wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 			return;
 		}
@@ -709,7 +709,7 @@ void sme_associate(struct wpa_supplicant *wpa_s, enum wpas_mode mode,
 	if (wpa_drv_associate(wpa_s, &params) < 0) {
 		wpa_msg(wpa_s, MSG_INFO, "SME: Association request to the "
 			"driver failed");
-		wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+		wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 		wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 		os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 		return;
@@ -757,7 +757,7 @@ static void sme_deauth(struct wpa_supplicant *wpa_s)
 	}
 	wpa_s->sme.prev_bssid_set = 0;
 
-	wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 	os_memset(wpa_s->bssid, 0, ETH_ALEN);
 	os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
@@ -790,7 +790,7 @@ void sme_event_auth_timed_out(struct wpa_supplicant *wpa_s,
 			      union wpa_event_data *data)
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Authentication timed out");
-	wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 	wpa_supplicant_mark_disassoc(wpa_s);
 }
 
@@ -799,7 +799,7 @@ void sme_event_assoc_timed_out(struct wpa_supplicant *wpa_s,
 			       union wpa_event_data *data)
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "SME: Association timed out");
-	wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+	wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 	wpa_supplicant_mark_disassoc(wpa_s);
 }
 

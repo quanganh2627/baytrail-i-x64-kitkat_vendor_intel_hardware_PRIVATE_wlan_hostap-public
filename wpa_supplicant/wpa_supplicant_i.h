@@ -821,7 +821,9 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
 enum wpa_key_mgmt key_mgmt2driver(int key_mgmt);
 void wpa_supplicant_update_config(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_clear_status(struct wpa_supplicant *wpa_s);
-void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid);
+int * wpas_get_bss_freqs_in_ess(struct wpa_supplicant *wpa_s);
+void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
+			    int blacklist);
 int wpas_driver_bss_selection(struct wpa_supplicant *wpa_s);
 int wpas_is_p2p_prioritized(struct wpa_supplicant *wpa_s);
 void wpas_auth_failed(struct wpa_supplicant *wpa_s);

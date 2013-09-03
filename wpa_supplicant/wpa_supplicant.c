@@ -1680,7 +1680,7 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 			 * can stop right here; the association will not
 			 * succeed.
 			 */
-			wpas_connection_failed(wpa_s, wpa_s->pending_bssid);
+			wpas_connection_failed(wpa_s, wpa_s->pending_bssid, 1);
 			wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
 			os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 			return;
@@ -3581,7 +3581,7 @@ static void add_freq(int *freqs, int *num_freqs, int freq)
 }
 
 
-static int * get_bss_freqs_in_ess(struct wpa_supplicant *wpa_s)
+int * wpas_get_bss_freqs_in_ess(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_bss *bss, *cbss;
 	const int max_freqs = 10;
@@ -3595,8 +3595,6 @@ static int * get_bss_freqs_in_ess(struct wpa_supplicant *wpa_s)
 	cbss = wpa_s->current_bss;
 
 	dl_list_for_each(bss, &wpa_s->bss, struct wpa_bss, list) {
-		if (bss == cbss)
-			continue;
 		if (bss->ssid_len == cbss->ssid_len &&
 		    os_memcmp(bss->ssid, cbss->ssid, bss->ssid_len) == 0 &&
 		    wpa_blacklist_get(wpa_s, bss->bssid) == NULL) {
@@ -3615,7 +3613,8 @@ static int * get_bss_freqs_in_ess(struct wpa_supplicant *wpa_s)
 }
 
 
-void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid)
+void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
+			    int blacklist)
 {
 	int timeout;
 	int count;
@@ -3649,26 +3648,33 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid)
 	}
 
 	/*
-	 * Add the failed BSSID into the blacklist and speed up next scan
-	 * attempt if there could be other APs that could accept association.
+	 * Add the failed BSSID into the blacklist (if needed) and speed up next
+	 * scan attempt if there could be other APs that could accept
+	 * association.
 	 * The current blacklist count indicates how many times we have tried
 	 * connecting to this AP and multiple attempts mean that other APs are
 	 * either not available or has already been tried, so that we can start
 	 * increasing the delay here to avoid constant scanning.
 	 */
-	count = wpa_blacklist_add(wpa_s, bssid);
-	if (count == 1 && wpa_s->current_bss) {
+	if (blacklist) {
+		count = wpa_blacklist_add(wpa_s, bssid);
+	} else {
+		struct wpa_blacklist *e = wpa_blacklist_get(wpa_s, bssid);
+		count = e ? e->count : 0;
+	}
+	if (count <= 1 && wpa_s->current_bss) {
 		/*
 		 * This BSS was not in the blacklist before. If there is
 		 * another BSS available for the same ESS, we should try that
 		 * next. Otherwise, we may as well try this one once more
 		 * before allowing other, likely worse, ESSes to be considered.
 		 */
-		freqs = get_bss_freqs_in_ess(wpa_s);
+		freqs = wpas_get_bss_freqs_in_ess(wpa_s);
 		if (freqs) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "Another BSS in this ESS "
 				"has been seen; try it next");
-			wpa_blacklist_add(wpa_s, bssid);
+			if (blacklist)
+				wpa_blacklist_add(wpa_s, bssid);
 			/*
 			 * On the next scan, go through only the known channels
 			 * used in this ESS based on previous scans to speed up
@@ -3692,6 +3698,7 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid)
 	}
 
 	switch (count) {
+	case 0:
 	case 1:
 		timeout = 100;
 		break;

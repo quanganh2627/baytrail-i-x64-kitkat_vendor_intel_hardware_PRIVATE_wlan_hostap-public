@@ -2063,8 +2063,11 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 	bssid = wpa_s->bssid;
 	if (is_zero_ether_addr(bssid))
 		bssid = wpa_s->pending_bssid;
-	if (wpa_s->wpa_state >= WPA_AUTHENTICATING)
-		wpas_connection_failed(wpa_s, bssid);
+	if (wpa_s->wpa_state >= WPA_AUTHENTICATING) {
+		int blacklist = !locally_generated ||
+				reason_code != WLAN_REASON_DEAUTH_LEAVING;
+		wpas_connection_failed(wpa_s, bssid, blacklist);
+	}
 	wpa_sm_notify_disassoc(wpa_s->wpa);
 	if (locally_generated)
 		wpa_s->disconnect_reason = -reason_code;
@@ -2734,7 +2737,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			const u8 *bssid = data->assoc_reject.bssid;
 			if (bssid == NULL || is_zero_ether_addr(bssid))
 				bssid = wpa_s->pending_bssid;
-			wpas_connection_failed(wpa_s, bssid);
+			wpas_connection_failed(wpa_s, bssid, 1);
 			wpa_supplicant_mark_disassoc(wpa_s);
 #endif /* ANDROID_P2P */
 		}
@@ -3101,6 +3104,13 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		}
 #endif /* CONFIG_P2P */
+		if (wpa_s->current_bss) {
+			int *freqs = wpas_get_bss_freqs_in_ess(wpa_s);
+			if (freqs) {
+				os_free(wpa_s->next_scan_freqs);
+				wpa_s->next_scan_freqs = freqs;
+			}
+		}
 		wpa_supplicant_mark_disassoc(wpa_s);
 		wpa_supplicant_set_state(wpa_s, WPA_INTERFACE_DISABLED);
 		break;
