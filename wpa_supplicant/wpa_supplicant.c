@@ -3620,17 +3620,6 @@ void wpas_connection_failed(struct wpa_supplicant *wpa_s, const u8 *bssid,
 	int count;
 	int *freqs = NULL;
 
-	if (wpa_s->disconnected) {
-		/*
-		 * There is no point in blacklisting the AP if this event is
-		 * generated based on local request to disconnect.
-		 */
-		wpa_dbg(wpa_s, MSG_DEBUG, "Ignore connection failure "
-			"indication since interface has been put into "
-			"disconnected state");
-		return;
-	}
-
 	/*
 	 * Remove possible authentication timeout since the connection failed.
 	 */
