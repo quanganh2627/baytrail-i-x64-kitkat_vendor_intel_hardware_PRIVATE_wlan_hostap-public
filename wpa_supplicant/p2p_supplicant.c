@@ -96,7 +96,7 @@ enum p2p_group_removal_reason {
 	P2P_GROUP_REMOVAL_IDLE_TIMEOUT,
 	P2P_GROUP_REMOVAL_UNAVAILABLE,
 	P2P_GROUP_REMOVAL_GO_ENDING_SESSION,
-	P2P_GROUP_REMOVAL_PSK_FAILURE
+	P2P_GROUP_REMOVAL_PSK_FAILURE,
 #ifdef ANDROID_P2P
 	P2P_GROUP_REMOVAL_FREQ_CONFLICT
 #endif
@@ -3534,11 +3534,11 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	p2p.max_listen = wpa_s->max_remain_on_chan;
 
 #ifdef ANDROID_P2P
-	if(wpa_s->drv_flags & WPA_DRIVER_FLAGS_MULTI_CHANNEL_CONCURRENT) {
+	if (wpa_s->num_multichan_concurrent > 1) {
 		p2p.p2p_concurrency = P2P_MULTI_CHANNEL_CONCURRENT;
 		wpa_printf(MSG_DEBUG, "P2P: Multi channel concurrency support");
 	} else {
-	// Add support for WPA_DRIVER_FLAGS_P2P_CONCURRENT
+		/* Add support for WPA_DRIVER_FLAGS_P2P_CONCURRENT */
 		p2p.p2p_concurrency = P2P_SINGLE_CHANNEL_CONCURRENT;
 		wpa_printf(MSG_DEBUG, "P2P: Single channel concurrency support");
 	}
@@ -3736,7 +3736,7 @@ static void wpas_p2p_check_join_scan_limit(struct wpa_supplicant *wpa_s)
 }
 
 
-static int wpas_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
+int wpas_p2p_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
 {
 	int *freqs, res, num, i;
 
@@ -3751,8 +3751,14 @@ static int wpas_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
 
 	num = wpas_p2p_valid_oper_freqs(wpa_s, freqs,
 					wpa_s->num_multichan_concurrent);
-	if (num < 0) {
-		res = 1;
+	if (num <= 0) {
+		if (num == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "P2P: No valid operating frequencies");
+			res = 0;
+		} else {
+			res = 1;
+		}
 		goto exit_free;
 	}
 
@@ -3915,7 +3921,7 @@ static void wpas_p2p_scan_res_join(struct wpa_supplicant *wpa_s,
 	if (freq > 0) {
 		u16 method;
 
-		if (wpas_check_freq_conflict(wpa_s, freq) > 0) {
+		if (wpas_p2p_check_freq_conflict(wpa_s, freq) > 0) {
 			wpa_msg_global(wpa_s->parent, MSG_INFO,
 				       P2P_EVENT_GROUP_FORMATION_FAILURE
 				       "reason=FREQ_CONFLICT");
@@ -6641,7 +6647,6 @@ int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s, int freq,
 	struct wpa_ssid *ssid)
 {
 	struct wpa_supplicant *iface = NULL;
-	struct p2p_data *p2p = wpa_s->global->p2p;
 
 	for (iface = wpa_s->global->ifaces; iface; iface = iface->next) {
 		if ((iface->current_ssid) &&

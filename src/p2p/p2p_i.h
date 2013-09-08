@@ -232,14 +232,6 @@ struct p2p_data {
 	 */
 	int max_disc_tu;
 
-#ifdef ANDROID_P2P
-	/**
-	 * sd_dev_list - device pointer to be serviced next
-	 * for service discovery
-	 */
-	struct dl_list *sd_dev_list;
-#endif
-
 	/**
 	 * devices - List of known P2P Device peers
 	 */
@@ -365,6 +357,7 @@ struct p2p_data {
 	 * srv_update_indic - Service Update Indicator for local services
 	 */
 	u16 srv_update_indic;
+
 #ifdef ANDROID_P2P
 	/**
 	 * srv_count - Registered services count

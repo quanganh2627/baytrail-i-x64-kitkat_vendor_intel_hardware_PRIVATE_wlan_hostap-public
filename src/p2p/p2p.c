@@ -2420,11 +2420,6 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
 	}
 
 #ifdef ANDROID_P2P
-	/*
-	 * 100 ms listen time is too short to receive the response frames in
-	 * some scenarios. Increase min listen time to 200 ms.
-	 */
-	p2p->min_disc_int = 2;
 	/* SD_FAIR_POLICY: Initializing the SD current serviced pointer to NULL
 	 */
 	p2p->sd_dev_list = NULL;

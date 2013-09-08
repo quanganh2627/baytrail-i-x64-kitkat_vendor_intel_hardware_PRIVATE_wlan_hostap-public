@@ -663,12 +663,6 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		wpa_supplicant_state_txt(wpa_s->wpa_state),
 		wpa_supplicant_state_txt(state));
 
-#ifdef ANDROID_P2P
-	if(state == WPA_ASSOCIATED && wpa_s->current_ssid) {
-		wpa_s->current_ssid->assoc_retry = 0;
-	}
-#endif /* ANDROID_P2P */
-
 	if (state != WPA_SCANNING)
 		wpa_supplicant_notify_scanning(wpa_s, 0);
 
@@ -1330,9 +1324,6 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 	ibss_rsn_deinit(wpa_s->ibss_rsn);
 	wpa_s->ibss_rsn = NULL;
 #endif /* CONFIG_IBSS_RSN */
-#ifdef ANDROID_P2P
-	int freq = 0;
-#endif
 
 	if (ssid->mode == WPAS_MODE_AP || ssid->mode == WPAS_MODE_P2P_GO ||
 	    ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION) {
@@ -1682,13 +1673,11 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_HT_OVERRIDES */
 
 #ifdef ANDROID_P2P
-	/* If multichannel concurrency is not supported, check for any frequency
-	 * conflict and take appropriate action.
-	 */
-	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_MULTI_CHANNEL_CONCURRENT) &&
-		((freq = wpa_drv_shared_freq(wpa_s)) > 0) && (freq != params.freq)) {
-		wpa_printf(MSG_DEBUG, "Shared interface with conflicting frequency found (%d != %d)"
-																, freq, params.freq);
+	/* Check for any freq conflict and take appropriate action. */
+	if (wpas_p2p_check_freq_conflict(wpa_s, params.freq) > 0) {
+		wpa_printf(MSG_DEBUG,
+			   "Requested freq=%d cannot be used, handle conflict",
+			   params.freq);
 		if (wpas_p2p_handle_frequency_conflicts(wpa_s, params.freq, ssid) < 0) 
 			return;
 	}

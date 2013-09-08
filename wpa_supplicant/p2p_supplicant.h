@@ -171,6 +171,7 @@ void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 void wpas_p2p_reset(struct wpa_supplicant *wpa_s);
 
 void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s);
+int wpas_p2p_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq);
 
 #ifdef CONFIG_P2P
 void wpas_p2p_continue_after_scan(struct wpa_supplicant *wpa_s);

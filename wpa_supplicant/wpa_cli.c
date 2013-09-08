@@ -419,6 +419,23 @@ static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, char *cmd, int print)
 		buf[sizeof(buf) - 1] = '\0';
 		cmd = buf;
 	}
+#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
+	if (redirect_interface) {
+		char *arg;
+		arg = os_strchr(cmd, ' ');
+		if (arg) {
+			*arg++ = '\0';
+			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s %s",
+					  cmd, redirect_interface, arg);
+		} else {
+			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s",
+					  cmd, redirect_interface);
+		}
+		cmd = _cmd;
+		os_free(redirect_interface);
+		redirect_interface = NULL;
+	}
+#endif
 	len = sizeof(buf) - 1;
 	ret = wpa_ctrl_request(ctrl, cmd, os_strlen(cmd), buf, &len,
 			       wpa_cli_msg_cb);
@@ -1646,22 +1663,6 @@ static int wpa_ctrl_command_sta(struct wpa_ctrl *ctrl, char *cmd,
 		printf("Not connected to hostapd - command dropped.\n");
 		return -1;
 	}
-#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
-	if (redirect_interface) {
-		char *arg;
-		arg = os_strchr(cmd, ' ');
-		if (arg) {
-			*arg++ = '\0';
-			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s %s", cmd, redirect_interface, arg);
-		}
-		else {
-			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s", cmd, redirect_interface);
-		}
-		cmd = _cmd;
-		os_free(redirect_interface);
-		redirect_interface = NULL;
-	}
-#endif
 	len = sizeof(buf) - 1;
 	ret = wpa_ctrl_request(ctrl, cmd, os_strlen(cmd), buf, &len,
 			       wpa_cli_msg_cb);
