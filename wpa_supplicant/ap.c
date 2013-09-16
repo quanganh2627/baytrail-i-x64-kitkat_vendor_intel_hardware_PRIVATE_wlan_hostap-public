@@ -35,7 +35,7 @@
 #include "ap.h"
 #include "ap/sta_info.h"
 #include "notify.h"
-
+#include "bss.h"
 
 #ifdef CONFIG_WPS
 static void wpas_wps_ap_pin_timeout(void *eloop_data, void *user_ctx);
@@ -436,6 +436,110 @@ static void wpas_ap_configured_cb(void *ctx)
 }
 
 
+static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
+{
+#define ecw2cw(ecw) ((1 << (ecw)) - 1)
+
+	struct wpa_supplicant *ifs;
+	const u8 *wmm_ie;
+	struct wmm_parameter_element *wmm_params;
+	int i;
+
+	/* Find a managed interface that is also associated */
+	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
+		wmm_ie = NULL;
+		if (ifs == wpa_s)
+			continue;
+
+		if ((ifs->current_ssid == NULL) || (ifs->assoc_freq == 0) ||
+		    (ifs->current_ssid->mode != WPAS_MODE_INFRA) ||
+		    (ifs->current_bss == NULL))
+			continue;
+
+		wmm_ie = wpa_bss_get_vendor_ie_subtype(ifs->current_bss,
+						       OUI_MICROSOFT,
+						       WMM_OUI_TYPE);
+		if (!wmm_ie) {
+			wpa_printf(MSG_DEBUG, "Did not find WMM_OUI_TYPE");
+			continue;
+		}
+
+		if (wmm_ie[1] < 5) {
+			wpa_printf(MSG_DEBUG, "Short WMM IE ignored");
+			continue;
+		}
+
+		if (wmm_ie[6] != WMM_OUI_SUBTYPE_PARAMETER_ELEMENT &&
+		    wmm_ie[6] != WMM_OUI_SUBTYPE_INFORMATION_ELEMENT) {
+			wpa_printf(MSG_DEBUG, "WMM IE cannot be used 0x%x",
+				   wmm_ie[6]);
+			continue;
+		}
+
+		/* Found an interface with valid WMM parameters*/
+		break;
+	}
+
+	if (!ifs || !wmm_ie)
+		return -1;
+
+	wpa_printf(MSG_DEBUG, "use the WMM parameters from bss interface=%s",
+		   ifs->ifname);
+
+	wmm_params = (struct wmm_parameter_element *)(wmm_ie + 2);
+	for (i = 0; i < 4; i++) {
+		struct wmm_ac_parameter *ac = &(wmm_params->ac[i]);
+
+		int aifs = ac->aci_aifsn & WMM_AC_AIFSN_MASK;
+		int acw_min = (ac->cw & WMM_AC_ECWMIN_MASK) >>
+			WMM_AC_ECWMIN_SHIFT;
+		int acw_max = (ac->cw & WMM_AC_ECWMAX_MASK) >>
+			WMM_AC_ECWMAX_SHIFT;
+
+		int txop_limit = le_to_host16(ac->txop_limit);
+
+		wpa_s->ap_iface->conf->wmm_ac_params[i].cwmin = acw_min;
+		wpa_s->ap_iface->conf->wmm_ac_params[i].cwmax = acw_max;
+		wpa_s->ap_iface->conf->wmm_ac_params[i].aifs = aifs;
+		wpa_s->ap_iface->conf->wmm_ac_params[i].txop_limit = txop_limit;
+
+		wpa_s->ap_iface->conf->tx_queue[i].aifs = aifs;
+		wpa_s->ap_iface->conf->tx_queue[i].burst =
+			(txop_limit * 32) / 100;
+
+		switch (i) {
+		case 0:
+			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
+				ecw2cw(acw_min);
+			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
+				ecw2cw(acw_max);
+			break;
+		case 1:
+			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
+				ecw2cw(acw_min);
+			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
+				4 * (ecw2cw(acw_min) + 1) - 1;
+			break;
+		case 2:
+			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
+				(ecw2cw(acw_min) + 1) / 2 - 1;
+			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
+				ecw2cw(acw_min);
+			break;
+
+		case 3:
+			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
+				(ecw2cw(acw_min) + 1) / 4 - 1;
+			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
+				(ecw2cw(acw_min) + 1) / 2 - 1;
+			break;
+		}
+	}
+
+#undef ecw2cw
+	return 0;
+}
+
 int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 			     struct wpa_ssid *ssid)
 {
@@ -529,9 +633,13 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	os_memcpy(wpa_s->ap_iface->conf->wmm_ac_params,
-		  wpa_s->conf->wmm_ac_params,
-		  sizeof(wpa_s->conf->wmm_ac_params));
+	/* try using the WMM parameters used by some other active managed
+	 * interface */
+	if (wpas_get_bss_wmm_parameters(wpa_s) < 0) {
+		os_memcpy(wpa_s->ap_iface->conf->wmm_ac_params,
+			  wpa_s->conf->wmm_ac_params,
+			  sizeof(wpa_s->conf->wmm_ac_params));
+	}
 
 	if (params.uapsd > 0) {
 		conf->bss->wmm_enabled = 1;

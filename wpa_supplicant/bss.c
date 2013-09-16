@@ -990,6 +990,7 @@ const u8 * wpa_bss_get_vendor_ie(const struct wpa_bss *bss, u32 vendor_type)
 	while (pos + 1 < end) {
 		if (pos + 2 + pos[1] > end)
 			break;
+
 		if (pos[0] == WLAN_EID_VENDOR_SPECIFIC && pos[1] >= 4 &&
 		    vendor_type == WPA_GET_BE32(&pos[2]))
 			return pos;
@@ -999,6 +1000,36 @@ const u8 * wpa_bss_get_vendor_ie(const struct wpa_bss *bss, u32 vendor_type)
 	return NULL;
 }
 
+
+/**
+ * wpa_bss_get_vendor_ie_subtype - Fetch an information element that is a
+ * subtype of a vendor information element from a BSS entry.
+ * @bss: BSS table entry
+ * @vendor_type: Vendor type (four octets starting the IE payload)
+ * @subtype: the requested subtype
+ * Returns: Pointer to the information element (id field) or %NULL if not found
+ */
+const u8 *wpa_bss_get_vendor_ie_subtype(const struct wpa_bss *bss,
+					u32 vendor_type, u32 subtype)
+{
+	const u8 *end, *pos;
+
+	pos = (const u8 *)(bss + 1);
+	end = pos + bss->ie_len;
+
+	while (pos + 1 < end) {
+		if (pos + 2 + pos[1] > end)
+			break;
+
+		if (pos[0] == WLAN_EID_VENDOR_SPECIFIC && pos[1] >= 4 &&
+		    vendor_type == WPA_GET_BE24(&pos[2]) &&
+		    subtype == pos[5])
+			return pos;
+		pos += 2 + pos[1];
+	}
+
+	return NULL;
+}
 
 /**
  * wpa_bss_get_vendor_ie_multi - Fetch vendor IE data from a BSS entry
