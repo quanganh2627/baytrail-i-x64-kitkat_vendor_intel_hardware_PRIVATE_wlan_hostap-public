@@ -169,6 +169,8 @@ void wpas_p2p_new_psk_cb(struct wpa_supplicant *wpa_s, const u8 *mac_addr,
 void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 			    int iface_addr);
 
+void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s);
+
 #ifdef CONFIG_P2P
 void wpas_p2p_continue_after_scan(struct wpa_supplicant *wpa_s);
 int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s);

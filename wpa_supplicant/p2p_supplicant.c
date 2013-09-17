@@ -3439,6 +3439,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	    wpa_s->conf->p2p_listen_channel) {
 		p2p.reg_class = wpa_s->conf->p2p_listen_reg_class;
 		p2p.channel = wpa_s->conf->p2p_listen_channel;
+		p2p.channel_forced = 1;
 	} else {
 		p2p.reg_class = 81;
 		/*
@@ -3447,6 +3448,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 		 */
 		os_get_random((u8 *) &r, sizeof(r));
 		p2p.channel = 1 + (r % 3) * 5;
+		p2p.channel_forced = 0;
 	}
 	wpa_printf(MSG_DEBUG, "P2P: Own listen channel: %d", p2p.channel);
 
@@ -5715,10 +5717,13 @@ void wpas_p2p_update_config(struct wpa_supplicant *wpa_s)
 		u8 reg_class, channel;
 		int ret;
 		unsigned int r;
+		u8 channel_forced;
+
 		if (wpa_s->conf->p2p_listen_reg_class &&
 		    wpa_s->conf->p2p_listen_channel) {
 			reg_class = wpa_s->conf->p2p_listen_reg_class;
 			channel = wpa_s->conf->p2p_listen_channel;
+			channel_forced = 1;
 		} else {
 			reg_class = 81;
 			/*
@@ -5727,8 +5732,10 @@ void wpas_p2p_update_config(struct wpa_supplicant *wpa_s)
 			 */
 			os_get_random((u8 *) &r, sizeof(r));
 			channel = 1 + (r % 3) * 5;
+			channel_forced = 0;
 		}
-		ret = p2p_set_listen_channel(p2p, reg_class, channel);
+		ret = p2p_set_listen_channel(p2p, reg_class, channel,
+					     channel_forced);
 		if (ret)
 			wpa_printf(MSG_ERROR, "P2P: Own listen channel update "
 				   "failed: %d", ret);
@@ -6580,6 +6587,28 @@ int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s)
 	wpa_s->p2p_last_4way_hs_fail = ssid;
 	return 0;
 }
+
+void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
+		return;
+
+	if (wpa_s->current_ssid && wpa_s->wpa_state == WPA_COMPLETED) {
+		int *freqs = NULL;
+		unsigned int num;
+
+		freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
+		if (!freqs)
+			return;
+
+		num = get_shared_radio_freqs(wpa_s, freqs,
+					     wpa_s->num_multichan_concurrent);
+
+		p2p_active_shared_freqs(wpa_s->global->p2p, freqs, num);
+		os_free(freqs);
+	}
+}
+
 #ifdef ANDROID_P2P
 int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s, int freq,
 	struct wpa_ssid *ssid)

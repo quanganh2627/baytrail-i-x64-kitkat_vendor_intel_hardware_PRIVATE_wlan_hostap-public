@@ -219,6 +219,14 @@ void p2p_set_state(struct p2p_data *p2p, int new_state)
 	p2p_dbg(p2p, "State %s -> %s",
 		p2p_state_txt(p2p->state), p2p_state_txt(new_state));
 	p2p->state = new_state;
+
+	if (new_state == P2P_IDLE && p2p->pending_channel) {
+		p2p_dbg(p2p, "apply change in listen channel");
+		p2p->cfg->reg_class = p2p->pending_reg_class;
+		p2p->cfg->channel = p2p->pending_channel;
+		p2p->pending_reg_class = 0;
+		p2p->pending_channel = 0;
+	}
 }
 
 
@@ -3990,19 +3998,57 @@ void p2p_set_managed_oper(struct p2p_data *p2p, int enabled)
 }
 
 
-int p2p_set_listen_channel(struct p2p_data *p2p, u8 reg_class, u8 channel)
+int p2p_set_listen_channel(struct p2p_data *p2p, u8 reg_class, u8 channel,
+			   u8 forced)
 {
 	if (p2p_channel_to_freq(reg_class, channel) < 0)
 		return -1;
 
 	p2p_dbg(p2p, "Set Listen channel: reg_class %u channel %u",
 		reg_class, channel);
-	p2p->cfg->reg_class = reg_class;
-	p2p->cfg->channel = channel;
 
+	/* listen channel was set in configuration or set by control interface;
+	 * cannot override it */
+	if (p2p->cfg->channel_forced && forced == 0)
+		return -1;
+
+	if (p2p->state == P2P_IDLE) {
+		p2p->cfg->reg_class = reg_class;
+		p2p->cfg->channel = channel;
+		p2p->cfg->channel_forced = forced;
+	} else {
+		p2p_dbg(p2p, "Deffer setting listen channel");
+		p2p->pending_reg_class = reg_class;
+		p2p->pending_channel = channel;
+		p2p->pending_channel_forced = forced;
+	}
 	return 0;
 }
 
+int p2p_active_shared_freqs(struct p2p_data *p2p, int *freqs,
+			    unsigned int num)
+{
+	u8 candidate_channel = 0;
+	unsigned int i;
+
+	for (i = 0; i < num; i++) {
+		u8 channel = 0, op_class;
+		p2p_freq_to_channel(freqs[i], &op_class, &channel);
+
+		/* already using one of the active frequencies; no need
+		 * to change */
+		if (p2p->cfg->channel == channel)
+			return 0;
+
+		if (channel == 1 || channel == 6 || channel == 11)
+			candidate_channel = channel;
+	}
+
+	if (candidate_channel)
+		p2p_set_listen_channel(p2p, 81, candidate_channel, 0);
+
+	return 0;
+}
 
 int p2p_set_ssid_postfix(struct p2p_data *p2p, const u8 *postfix, size_t len)
 {
