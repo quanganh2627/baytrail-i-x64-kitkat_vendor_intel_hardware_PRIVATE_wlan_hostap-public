@@ -6792,8 +6792,8 @@ int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s, int freq,
 				struct csa_settings settings = {
 					.freq_params.freq = freq,
 				};
-				if (wpa_drv_switch_channel(iface,
-							   &settings) == 0) {
+				if (ap_switch_channel(iface,
+						      &settings) == 0) {
 					wpa_printf(MSG_ERROR, "P2P: GO Moved to freq(%d)", freq);
 					iface->current_ssid->frequency = freq;
 					continue;

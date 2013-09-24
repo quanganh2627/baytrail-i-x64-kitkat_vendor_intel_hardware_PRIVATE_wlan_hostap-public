@@ -66,4 +66,7 @@ wpas_ap_wps_nfc_handover_sel(struct wpa_supplicant *wpa_s,
 }
 #endif /* CONFIG_AP */
 
+int ap_switch_channel(struct wpa_supplicant *wpa_s,
+		      struct csa_settings *settings);
+
 #endif /* AP_H */

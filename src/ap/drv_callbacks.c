@@ -403,6 +403,16 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 	hapd->iconf->channel = channel;
 	hapd->iconf->ieee80211n = ht;
 	hapd->iconf->secondary_channel = offset;
+
+	if (hapd->iface->csa_in_progress &&
+	    (freq == hapd->iface->cs_freq)) {
+		hapd->iface->cs_freq = 0;
+		hapd->iface->cs_count = 0;
+		hapd->iface->cs_block_tx = 0;
+		hapd->iface->cs_c_off_beacon = 0;
+		hapd->iface->cs_c_off_proberesp = 0;
+		hapd->iface->csa_in_progress = 0;
+	}
 #endif /* NEED_AP_MLME */
 }
 
