@@ -50,7 +50,7 @@ static int wpa_supplicant_global_iface_interfaces(struct wpa_global *global,
 
 static int pno_start(struct wpa_supplicant *wpa_s)
 {
-	int ret;
+	int ret, interval;
 	size_t i, num_ssid;
 	struct wpa_ssid *ssid;
 	struct wpa_driver_scan_params params;
@@ -108,7 +108,10 @@ static int pno_start(struct wpa_supplicant *wpa_s)
 	if (wpa_s->conf->filter_rssi)
 		params.filter_rssi = wpa_s->conf->filter_rssi;
 
-	ret = wpa_drv_sched_scan(wpa_s, &params, 10 * 1000);
+	interval = wpa_s->conf->sched_scan_interval ?
+		wpa_s->conf->sched_scan_interval : 10;
+
+	ret = wpa_drv_sched_scan(wpa_s, &params, interval * 1000);
 	os_free(params.filter_ssids);
 	if (ret == 0)
 		wpa_s->pno = 1;
@@ -1503,7 +1506,10 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 	}
 #ifdef CONFIG_SAE
 	if (wpa_s->wpa_state >= WPA_ASSOCIATED &&
-	    wpa_s->sme.sae.state == SAE_ACCEPTED && !wpa_s->ap_iface) {
+#ifdef CONFIG_AP
+	    !wpa_s->ap_iface &&
+#endif /* CONFIG_AP */
+	    wpa_s->sme.sae.state == SAE_ACCEPTED) {
 		ret = os_snprintf(pos, end - pos, "sae_group=%d\n",
 				  wpa_s->sme.sae.group);
 		if (ret < 0 || ret >= end - pos)

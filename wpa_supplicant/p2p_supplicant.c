@@ -1270,6 +1270,18 @@ void wpas_p2p_group_formation_failed(struct wpa_supplicant *wpa_s)
 }
 
 
+void wpas_p2p_ap_setup_failed(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->global->p2p_group_formation != wpa_s)
+		return;
+	/* Speed up group formation timeout since this cannot succeed */
+	eloop_cancel_timeout(wpas_p2p_group_formation_timeout,
+			     wpa_s->parent, NULL);
+	eloop_register_timeout(0, 0, wpas_p2p_group_formation_timeout,
+			       wpa_s->parent, NULL);
+}
+
+
 void wpas_go_neg_completed(void *ctx, struct p2p_go_neg_results *res)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -6024,6 +6036,16 @@ struct wpa_ssid * wpas_p2p_get_persistent(struct wpa_supplicant *wpa_s,
 void wpas_p2p_notify_ap_sta_authorized(struct wpa_supplicant *wpa_s,
 				       const u8 *addr)
 {
+	if (eloop_cancel_timeout(wpas_p2p_group_formation_timeout,
+				 wpa_s->parent, NULL) > 0) {
+		/*
+		 * This can happen if WPS provisioning step is not terminated
+		 * cleanly (e.g., P2P Client does not send WSC_Done). Since the
+		 * peer was able to connect, there is no need to time out group
+		 * formation after this, though.
+		 */
+		wpa_printf(MSG_DEBUG, "P2P: Workaround - cancelled P2P group formation timeout on data connection");
+	}
 	wpa_s->global->p2p_go_wait_client.sec = 0;
 	if (addr == NULL)
 		return;
@@ -6346,6 +6368,13 @@ void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 }
 
 
+static void wpas_p2p_psk_failure_removal(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+	wpas_p2p_group_delete(wpa_s, P2P_GROUP_REMOVAL_PSK_FAILURE);
+}
+
+
 int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
@@ -6379,7 +6408,13 @@ int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s)
 			       persistent->id);
 	disconnect:
 		wpa_s->p2p_last_4way_hs_fail = NULL;
-		wpas_p2p_group_delete(wpa_s, P2P_GROUP_REMOVAL_PSK_FAILURE);
+		/*
+		 * Remove the group from a timeout to avoid issues with caller
+		 * continuing to use the interface if this is on a P2P group
+		 * interface.
+		 */
+		eloop_register_timeout(0, 0, wpas_p2p_psk_failure_removal,
+				       wpa_s, NULL);
 		return 1;
 	}
 
