@@ -4502,10 +4502,19 @@ static int p2p_ctrl_set(struct wpa_supplicant *wpa_s, char *cmd)
 		return wpa_drv_set_p2p_powersave(wpa_s, -1, -1, atoi(param));
 
 	if (os_strcmp(cmd, "disabled") == 0) {
-		wpa_s->global->p2p_disabled = atoi(param);
+		int disabled = atoi(param);
+
+		if (disabled)
+			wpa_s->global->p2p_disabled |=
+				WPA_P2P_MGMT_CTRL_DISABLED;
+		else
+			wpa_s->global->p2p_disabled &=
+				~WPA_P2P_MGMT_CTRL_DISABLED;
+
 		wpa_printf(MSG_DEBUG, "P2P functionality %s",
 			   wpa_s->global->p2p_disabled ?
 			   "disabled" : "enabled");
+
 		if (wpa_s->global->p2p_disabled) {
 			wpas_p2p_stop_find(wpa_s);
 			os_memset(wpa_s->p2p_auth_invite, 0, ETH_ALEN);

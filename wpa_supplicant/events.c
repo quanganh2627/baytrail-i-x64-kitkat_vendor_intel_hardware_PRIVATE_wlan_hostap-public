@@ -3096,6 +3096,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpa_dbg(wpa_s, MSG_DEBUG, "Interface was enabled");
 		if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
 			wpa_supplicant_update_mac_addr(wpa_s);
+			if (wpa_s->p2p_mgmt)
+				wpa_s->global->p2p_disabled &=
+					~WPA_P2P_MGMT_IF_DISABLED;
+
 #ifdef CONFIG_AP
 			if (!wpa_s->ap_iface) {
 				wpa_supplicant_set_state(wpa_s,
@@ -3113,11 +3117,16 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_INTERFACE_DISABLED:
 		wpa_dbg(wpa_s, MSG_DEBUG, "Interface was disabled");
 #ifdef CONFIG_P2P
-		if (wpa_s->p2p_group_interface ==
-			   P2P_GROUP_INTERFACE_GO) {
+		if (wpa_s->p2p_group_interface == P2P_GROUP_INTERFACE_GO) {
 			wpas_p2p_disconnect(wpa_s);
 			break;
 		}
+
+		if (wpa_s->p2p_mgmt) {
+			wpas_p2p_reset(wpa_s);
+			wpa_s->global->p2p_disabled |= WPA_P2P_MGMT_IF_DISABLED;
+		}
+
 #endif /* CONFIG_P2P */
 		if (wpa_s->current_bss) {
 			int *freqs = wpas_get_bss_freqs_in_ess(wpa_s);

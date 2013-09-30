@@ -1177,6 +1177,12 @@ u16 p2p_get_provisioning_info(struct p2p_data *p2p, const u8 *addr);
  */
 void p2p_clear_provisioning_info(struct p2p_data *p2p, const u8 *addr);
 
+/**
+ * p2p_reset - cancel timeouts and reset P2P data, state will be set to
+ * P2P_IDLE by p2p_flush()
+ * @p2p: P2P module context from p2p_init()
+ */
+void p2p_reset(struct p2p_data *p2p);
 
 /* Event notifications from lower layer driver operations */
 

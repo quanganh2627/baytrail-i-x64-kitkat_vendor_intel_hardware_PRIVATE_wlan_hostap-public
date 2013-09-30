@@ -2492,6 +2492,21 @@ void p2p_deinit(struct p2p_data *p2p)
 }
 
 
+void p2p_reset(struct p2p_data *p2p)
+{
+	if (p2p == NULL)
+		return;
+
+	eloop_cancel_timeout(p2p_expiration_timeout, p2p, NULL);
+	eloop_cancel_timeout(p2p_ext_listen_timeout, p2p, NULL);
+	eloop_cancel_timeout(p2p_scan_timeout, p2p, NULL);
+	eloop_cancel_timeout(p2p_go_neg_start, p2p, NULL);
+
+	p2p_flush(p2p);
+	wpabuf_free(p2p->sd_resp);
+}
+
+
 void p2p_flush(struct p2p_data *p2p)
 {
 	struct p2p_device *dev, *prev;

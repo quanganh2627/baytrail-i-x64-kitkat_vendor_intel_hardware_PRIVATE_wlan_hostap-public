@@ -3518,11 +3518,15 @@ static int wpa_driver_nl80211_init_nl(struct wpa_driver_nl80211_data *drv)
 
 static void wpa_driver_nl80211_rfkill_blocked(void *ctx)
 {
+	struct wpa_driver_nl80211_data *drv = ctx;
 	wpa_printf(MSG_DEBUG, "nl80211: RFKILL blocked");
+
 	/*
-	 * This may be for any interface; use ifdown event to disable
-	 * interface.
+	 * rtnetlink ifdown handler will report interfaces other than the P2P
+	 * Device interface as disabled.
 	 */
+	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_DISABLED, NULL);
 }
 
 
@@ -3540,7 +3544,12 @@ static void wpa_driver_nl80211_rfkill_unblocked(void *ctx)
 		nl80211_disable_11b_rates(drv,
 					  drv->ifindex, 1);
 
-	/* rtnetlink ifup handler will report interface as enabled */
+	/*
+	 * rtnetlink ifup handler will report interfaces other than the P2P
+	 * Device interface as enabled.
+	 */
+	if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+		wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_ENABLED, NULL);
 }
 
 
@@ -4048,9 +4057,7 @@ static int i802_set_iface_flags(struct i802_bss *bss, int up)
 static int
 wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv)
 {
-#ifndef HOSTAPD
 	enum nl80211_iftype nlmode = NL80211_IFTYPE_STATION;
-#endif /* HOSTAPD */
 	struct i802_bss *bss = &drv->first_bss;
 	int send_rfkill_event = 0;
 
@@ -4070,14 +4077,11 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv)
 		   bss->ifname, drv->phyname);
 
 #ifndef HOSTAPD
+
+	/* Note that a P2P_DEVICE is always dynamically added */
 	if (bss->if_dynamic)
 		nlmode = nl80211_get_ifmode(bss);
 
-	/*
-	 * Make sure the interface starts up in station mode unless this is a
-	 * dynamically added interface (e.g., P2P) that was already configured
-	 * with proper iftype.
-	 */
 	if (wpa_driver_nl80211_set_mode(bss, nlmode) < 0) {
 		wpa_printf(MSG_ERROR, "nl80211: Could not configure driver to use managed mode");
 		return -1;
@@ -4104,19 +4108,20 @@ wpa_driver_nl80211_finish_drv_init(struct wpa_driver_nl80211_data *drv)
 	} else {
 		wpa_printf(MSG_DEBUG, "nl80211: Could not yet enable "
 			   "interface '%s' due to rfkill", bss->ifname);
-		if (nlmode == NL80211_IFTYPE_P2P_DEVICE)
-			return 0;
-		drv->if_disabled = 1;
+		if (nlmode != NL80211_IFTYPE_P2P_DEVICE)
+			drv->if_disabled = 1;
 		send_rfkill_event = 1;
 	}
 
-	netlink_send_oper_ifla(drv->global->netlink, drv->ifindex,
-			       1, IF_OPER_DORMANT);
+	if (nlmode != NL80211_IFTYPE_P2P_DEVICE)
+		netlink_send_oper_ifla(drv->global->netlink, drv->ifindex,
+				       1, IF_OPER_DORMANT);
 #endif /* HOSTAPD */
 
-	if (linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname,
-			       bss->addr))
-		return -1;
+	if (nlmode != NL80211_IFTYPE_P2P_DEVICE)
+		if (linux_get_ifhwaddr(drv->global->ioctl_sock, bss->ifname,
+				       bss->addr))
+				return -1;
 
 	if (send_rfkill_event) {
 		eloop_register_timeout(0, 0, wpa_driver_nl80211_send_rfkill,

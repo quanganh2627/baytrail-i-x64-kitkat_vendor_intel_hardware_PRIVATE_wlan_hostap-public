@@ -168,6 +168,7 @@ void wpas_p2p_new_psk_cb(struct wpa_supplicant *wpa_s, const u8 *mac_addr,
 			 const u8 *psk, size_t psk_len);
 void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 			    int iface_addr);
+void wpas_p2p_reset(struct wpa_supplicant *wpa_s);
 
 void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s);
 

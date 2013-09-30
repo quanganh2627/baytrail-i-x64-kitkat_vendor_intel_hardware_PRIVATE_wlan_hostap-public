@@ -6529,6 +6529,15 @@ static void wpas_p2p_remove_client_go(struct wpa_supplicant *wpa_s,
 }
 
 
+void wpas_p2p_reset(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s || !wpa_s->global->p2p_disabled || !wpa_s->global->p2p)
+		return;
+
+	p2p_reset(wpa_s->global->p2p);
+}
+
+
 void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 			    int iface_addr)
 {

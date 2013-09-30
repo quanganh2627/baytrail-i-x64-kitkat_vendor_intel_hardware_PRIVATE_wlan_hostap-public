@@ -331,4 +331,10 @@ enum wpa_ctrl_req_type {
 /* Maximum number of EAP methods to store for EAP server user information */
 #define EAP_MAX_METHODS 8
 
+/* P2P Mgmt interface disabled by config or control interface */
+#define WPA_P2P_MGMT_CTRL_DISABLED BIT(0)
+
+/* P2P Mgmt interface disabled since the underlying interface is disabled*/
+#define WPA_P2P_MGMT_IF_DISABLED BIT(1)
+
 #endif /* DEFS_H */
