@@ -3081,7 +3081,7 @@ struct p2p_oper_class_map {
 	u8 min_chan;
 	u8 max_chan;
 	u8 inc;
-	enum { BW20, BW40PLUS, BW40MINUS } bw;
+	enum { BW20, BW40PLUS, BW40MINUS, BW80 } bw;
 };
 
 static struct p2p_oper_class_map op_class[] = {
@@ -3096,9 +3096,70 @@ static struct p2p_oper_class_map op_class[] = {
 	{ HOSTAPD_MODE_IEEE80211A, 117, 40, 48, 8, BW40MINUS },
 	{ HOSTAPD_MODE_IEEE80211A, 126, 149, 157, 8, BW40PLUS },
 	{ HOSTAPD_MODE_IEEE80211A, 127, 153, 161, 8, BW40MINUS },
+
+	/*
+	 * The draft (Table E-4) actually talks about center freq
+	 * 42, 58, 106, 122, 138, 155 with channel spacing of 80,
+	 * but currently use the following definition for simplicity
+	 * (these center freqs are not actual channels, which
+	 * make has_channel() fail). wpas_p2p_verify_80mhz() should
+	 * take care of removing invalid channels.
+	 */
+	{ HOSTAPD_MODE_IEEE80211A, 128, 36, 161, 4, BW80 },
 	{ -1, 0, 0, 0, 0, BW20 }
 };
 
+static int wpas_p2p_get_center_80mhz(struct wpa_supplicant *wpa_s,
+				     struct hostapd_hw_modes *mode,
+				     u8 channel)
+{
+	u8 center_channels[] = {42, 58, 106, 122, 138, 155};
+	int i;
+
+	if (mode->mode != HOSTAPD_MODE_IEEE80211A)
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(center_channels); i++)
+		/*
+		 * in 80mhz, the bandwidth "spans" 12 channels (e.g. 36-48),
+		 * so the center channel is 6 channels away from the start/end.
+		 */
+		if (channel >= center_channels[i] - 6 &&
+		    channel <= center_channels[i] + 6)
+			return center_channels[i];
+
+	return 0;
+}
+
+static int wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
+				 struct hostapd_hw_modes *mode,
+				 u8 channel, u8 bw)
+{
+	u8 center_chan;
+	int i, flags;
+
+	center_chan = wpas_p2p_get_center_80mhz(wpa_s, mode, channel);
+	if (!center_chan)
+		return 0;
+
+	/* check all the channels are available */
+	for (i = 0; i < 4; i++) {
+		int adj_chan = center_chan - 6 + i*4;
+
+		if (!has_channel(wpa_s->global, mode, adj_chan, &flags))
+			return 0;
+
+		if (i == 0 && !(flags & HOSTAPD_CHAN_VHT_10_70))
+			return 0;
+		else if (i == 1 && !(flags & HOSTAPD_CHAN_VHT_30_50))
+			return 0;
+		else if (i == 2 && !(flags & HOSTAPD_CHAN_VHT_50_30))
+			return 0;
+		else if (i == 3 && !(flags & HOSTAPD_CHAN_VHT_70_10))
+			return 0;
+	}
+	return 1;
+}
 
 static int wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 				   struct hostapd_hw_modes *mode,
@@ -3116,6 +3177,10 @@ static int wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 	    (!(flag & HOSTAPD_CHAN_HT40PLUS) ||
 	     !has_channel(wpa_s->global, mode, channel + 4, NULL)))
 		return 0;
+	if (bw == BW80 &&
+	    !wpas_p2p_verify_80mhz(wpa_s, mode, channel, bw))
+		return 0;
+
 	return 1;
 }
 
@@ -3193,6 +3258,14 @@ int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
 	return 0;
 }
 
+int wpas_p2p_get_vht80_center(struct wpa_supplicant *wpa_s,
+			      struct hostapd_hw_modes *mode, u8 channel)
+{
+	if (!wpas_p2p_verify_channel(wpa_s, mode, channel, BW80))
+		return 0;
+
+	return wpas_p2p_get_center_80mhz(wpa_s, mode, channel);
+}
 
 static int wpas_get_noa(void *ctx, const u8 *interface_addr, u8 *buf,
 			size_t buf_len)

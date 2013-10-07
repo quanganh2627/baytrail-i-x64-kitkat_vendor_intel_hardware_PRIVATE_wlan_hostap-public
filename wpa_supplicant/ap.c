@@ -41,6 +41,28 @@
 static void wpas_wps_ap_pin_timeout(void *eloop_data, void *user_ctx);
 #endif /* CONFIG_WPS */
 
+static void wpas_conf_ap_vht(struct wpa_supplicant *wpa_s,
+			     struct hostapd_config *conf,
+			     struct hostapd_hw_modes *mode)
+{
+	u8 center_chan = 0;
+	u8 channel = conf->channel;
+
+	if (!conf->secondary_channel)
+		goto no_vht;
+
+	center_chan = wpas_p2p_get_vht80_center(wpa_s, mode, channel);
+	if (!center_chan)
+		goto no_vht;
+
+	/* use 80mhz channel */
+	conf->vht_oper_chwidth = 1;
+	conf->vht_oper_centr_freq_seg0_idx = center_chan;
+	return;
+no_vht:
+	conf->vht_oper_centr_freq_seg0_idx =
+		channel + conf->secondary_channel * 2;
+}
 
 static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 				  struct wpa_ssid *ssid,
@@ -114,6 +136,11 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 				 HT_CAP_INFO_SHORT_GI40MHZ |
 				 HT_CAP_INFO_RX_STBC_MASK |
 				 HT_CAP_INFO_MAX_AMSDU_SIZE);
+
+			if (mode->vht_capab && ssid->vht) {
+				conf->ieee80211ac = 1;
+				wpas_conf_ap_vht(wpa_s, conf, mode);
+			}
 		}
 	}
 #endif /* CONFIG_IEEE80211N */
