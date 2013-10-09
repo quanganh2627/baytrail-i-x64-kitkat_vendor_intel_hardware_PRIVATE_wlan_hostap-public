@@ -710,4 +710,21 @@ static inline int wpa_drv_wnm_oper(struct wpa_supplicant *wpa_s,
 				       buf_len);
 }
 
+static inline int wpa_drv_status(struct wpa_supplicant *wpa_s,
+				 char *buf, size_t buflen)
+{
+	if (!wpa_s->driver->status)
+		return -1;
+	return wpa_s->driver->status(wpa_s->drv_priv, buf, buflen);
+}
+
+#ifdef ANDROID
+static inline int wpa_drv_driver_cmd(struct wpa_supplicant *wpa_s,
+				     char *cmd, char *buf, size_t buf_len)
+{
+	if (!wpa_s->driver->driver_cmd)
+		return -1;
+	return wpa_s->driver->driver_cmd(wpa_s->drv_priv, cmd, buf, buf_len);
+}
+#endif
 #endif /* DRIVER_I_H */

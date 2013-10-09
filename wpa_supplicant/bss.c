@@ -343,6 +343,14 @@ static struct wpa_bss * wpa_bss_add(struct wpa_supplicant *wpa_s,
 	os_memcpy(bss + 1, res + 1, res->ie_len + res->beacon_ie_len);
 	wpa_bss_set_hessid(bss);
 
+	if (wpa_s->num_bss + 1 > wpa_s->conf->bss_max_count &&
+	    wpa_bss_remove_oldest(wpa_s) != 0) {
+		wpa_printf(MSG_ERROR, "Increasing the MAX BSS count to %d "
+			   "because all BSSes are in use. We should normally "
+			   "not get here!", (int) wpa_s->num_bss + 1);
+		wpa_s->conf->bss_max_count = wpa_s->num_bss + 1;
+	}
+
 	dl_list_add_tail(&wpa_s->bss, &bss->list);
 	dl_list_add_tail(&wpa_s->bss_id, &bss->list_id);
 	wpa_s->num_bss++;
@@ -350,13 +358,6 @@ static struct wpa_bss * wpa_bss_add(struct wpa_supplicant *wpa_s,
 		" SSID '%s'",
 		bss->id, MAC2STR(bss->bssid), wpa_ssid_txt(ssid, ssid_len));
 	wpas_notify_bss_added(wpa_s, bss->bssid, bss->id);
-	if (wpa_s->num_bss > wpa_s->conf->bss_max_count &&
-	    wpa_bss_remove_oldest(wpa_s) != 0) {
-		wpa_printf(MSG_ERROR, "Increasing the MAX BSS count to %d "
-			   "because all BSSes are in use. We should normally "
-			   "not get here!", (int) wpa_s->num_bss);
-		wpa_s->conf->bss_max_count = wpa_s->num_bss;
-	}
 	return bss;
 }
 
@@ -624,8 +625,18 @@ void wpa_bss_update_scan_res(struct wpa_supplicant *wpa_s,
 	bss = wpa_bss_get(wpa_s, res->bssid, ssid + 2, ssid[1]);
 	if (bss == NULL)
 		bss = wpa_bss_add(wpa_s, ssid + 2, ssid[1], res, fetch_time);
-	else
+	else {
 		bss = wpa_bss_update(wpa_s, bss, res, fetch_time);
+		if (wpa_s->last_scan_res) {
+			unsigned int i;
+			for (i = 0; i < wpa_s->last_scan_res_used; i++) {
+				if (bss == wpa_s->last_scan_res[i]) {
+					/* Already in the list */
+					return;
+				}
+			}
+		}
+	}
 
 	if (bss == NULL)
 		return;

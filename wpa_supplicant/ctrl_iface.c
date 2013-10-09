@@ -1414,6 +1414,8 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 	char *pos, *end, tmp[30];
 	int res, verbose, wps, ret;
 
+	if (os_strcmp(params, "-DRIVER") == 0)
+		return wpa_drv_status(wpa_s, buf, buflen);
 	verbose = os_strcmp(params, "-VERBOSE") == 0;
 	wps = os_strcmp(params, "-WPS") == 0;
 	pos = buf;
@@ -4246,7 +4248,8 @@ static int p2p_ctrl_group_add_persistent(struct wpa_supplicant *wpa_s,
 		return -1;
 	}
 
-	return wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq, ht40, NULL);
+	return wpas_p2p_group_add_persistent(wpa_s, ssid, 0, freq, ht40, NULL,
+					     0);
 }
 
 

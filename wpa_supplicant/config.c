@@ -894,6 +894,10 @@ static int wpa_config_parse_scan_freq(const struct parse_data *data,
 	freqs = wpa_config_parse_int_array(value);
 	if (freqs == NULL)
 		return -1;
+	if (freqs[0] == 0) {
+		os_free(freqs);
+		freqs = NULL;
+	}
 	os_free(ssid->scan_freq);
 	ssid->scan_freq = freqs;
 
@@ -910,6 +914,10 @@ static int wpa_config_parse_freq_list(const struct parse_data *data,
 	freqs = wpa_config_parse_int_array(value);
 	if (freqs == NULL)
 		return -1;
+	if (freqs[0] == 0) {
+		os_free(freqs);
+		freqs = NULL;
+	}
 	os_free(ssid->freq_list);
 	ssid->freq_list = freqs;
 
@@ -2867,6 +2875,10 @@ static int wpa_config_process_freq_list(const struct global_parse_data *data,
 	freqs = wpa_config_parse_int_array(value);
 	if (freqs == NULL)
 		return -1;
+	if (freqs[0] == 0) {
+		os_free(freqs);
+		freqs = NULL;
+	}
 	os_free(config->freq_list);
 	config->freq_list = freqs;
 	return 0;
@@ -3129,6 +3141,19 @@ static int wpa_config_process_ap_vendor_elements(
 }
 
 
+#ifdef CONFIG_CTRL_IFACE
+static int wpa_config_process_no_ctrl_interface(
+	const struct global_parse_data *data,
+	struct wpa_config *config, int line, const char *pos)
+{
+	wpa_printf(MSG_DEBUG, "no_ctrl_interface -> ctrl_interface=NULL");
+	os_free(config->ctrl_interface);
+	config->ctrl_interface = NULL;
+	return 0;
+}
+#endif /* CONFIG_CTRL_IFACE */
+
+
 #ifdef OFFSET
 #undef OFFSET
 #endif /* OFFSET */
@@ -3148,6 +3173,7 @@ static int wpa_config_process_ap_vendor_elements(
 static const struct global_parse_data global_fields[] = {
 #ifdef CONFIG_CTRL_IFACE
 	{ STR(ctrl_interface), 0 },
+	{ FUNC_NO_VAR(no_ctrl_interface), 0 },
 	{ STR(ctrl_interface_group), 0 } /* deprecated */,
 #endif /* CONFIG_CTRL_IFACE */
 	{ INT_RANGE(eapol_version, 1, 2), 0 },
