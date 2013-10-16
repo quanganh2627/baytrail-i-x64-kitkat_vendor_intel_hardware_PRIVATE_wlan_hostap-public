@@ -1158,6 +1158,59 @@ struct wpa_signal_info {
 };
 
 /**
+ * struct beacon_data - beacon data
+ * @head: head portion of beacon (before TIM IE)
+ * @tail: tail portion of beacon (after TIM IE)
+ * @beacon_ies: extra information element(s) to add into Beacon frames or %NULL
+ * @proberesp_ies: extra information element(s) to add into Probe Response
+ *	frames or %NULL
+ * @assocresp_ies: extra information element(s) to add into (Re)Association
+ *	Response frames or %NULL
+ * @probe_resp: probe response template
+ * @head_len: length of @head
+ * @tail_len: length of @tail
+ * @beacon_ies_len: length of beacon_ies in octets
+ * @proberesp_ies_len: length of proberesp_ies in octets
+ * @proberesp_ies_len: length of proberesp_ies in octets
+ * @probe_resp_len: length of probe response template (@probe_resp)
+ */
+struct beacon_data {
+	u8 *head, *tail;
+	u8 *beacon_ies;
+	u8 *proberesp_ies;
+	u8 *assocresp_ies;
+	u8 *probe_resp;
+
+	size_t head_len, tail_len;
+	size_t beacon_ies_len;
+	size_t proberesp_ies_len;
+	size_t assocresp_ies_len;
+	size_t probe_resp_len;
+};
+
+/**
+ * struct csa_settings - settings for channel switch command
+ * @cs_count: count in beacons to perform the switch
+ * @block_tx: 1 - block transmission for CSA period
+ * @freq_params: next channel frequency parameter
+ * @beacon_csa: beacon/probe resp/asooc resp info for CSA period
+ * @beacon_after: next beacon/probe resp/asooc resp info
+ * @counter_offset_beacon: offset to the count field in beacon's tail
+ * @counter_offset_presp: offset to the count field in probe resp.
+ */
+struct csa_settings {
+	u8 cs_count;
+	u8 block_tx;
+
+	struct hostapd_freq_params freq_params;
+	struct beacon_data beacon_csa;
+	struct beacon_data beacon_after;
+
+	u16 counter_offset_beacon;
+	u16 counter_offset_presp;
+};
+
+/**
  * struct wpa_driver_ops - Driver interface API definition
  *
  * This structure defines the API that each driver interface needs to implement
@@ -2761,13 +2814,13 @@ struct wpa_driver_ops {
 	 * switch_channel - Announce channel switch and migrate the GO to the
 	 * given frequency
 	 * @priv: Private driver interface data
-	 * @freq: Frequency in MHz
+	 * @settings: Settings for CSA period and new channel
 	 * Returns: 0 on success, -1 on failure
 	 *
 	 * This function is used to move the GO to the legacy STA channel to
 	 * avoid frequency conflict in single channel concurrency.
 	 */
-	int (*switch_channel)(void *priv, unsigned int freq);
+	int (*switch_channel)(void *priv, struct csa_settings *settings);
 
 	/**
 	 * start_dfs_cac - Listen for radar interference on the channel
