@@ -468,13 +468,12 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 #define ecw2cw(ecw) ((1 << (ecw)) - 1)
 
 	struct wpa_supplicant *ifs;
-	const u8 *wmm_ie;
+	const u8 *wmm_ie = NULL;
 	struct wmm_parameter_element *wmm_params;
 	int i;
 
 	/* Find a managed interface that is also associated */
 	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
-		wmm_ie = NULL;
 		if (ifs == wpa_s)
 			continue;
 
@@ -507,7 +506,7 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 		break;
 	}
 
-	if (!ifs || !wmm_ie)
+	if (!ifs)
 		return -1;
 
 	wpa_printf(MSG_DEBUG, "use the WMM parameters from bss interface=%s",
