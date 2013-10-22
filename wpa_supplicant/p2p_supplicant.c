@@ -150,26 +150,28 @@ static int wpas_p2p_num_unused_channels(struct wpa_supplicant *wpa_s)
  * interfaces, and that are also valid for P2P operation.
  */
 static int wpas_p2p_valid_oper_freqs(struct wpa_supplicant *wpa_s,
-				     int *p2p_freqs, unsigned int len)
+				     struct wpa_used_freq_data *p2p_freqs,
+				     unsigned int len)
 {
-	int *freqs;
+	struct wpa_used_freq_data *freqs_data;
 	unsigned int num, i, j;
 
-	freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
-	if (!freqs)
+	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
+			       sizeof(struct wpa_used_freq_data));
+	if (!freqs_data)
 		return -1;
 
-	num = get_shared_radio_freqs(wpa_s, freqs,
-				     wpa_s->num_multichan_concurrent);
+	num = get_shared_radio_freqs_data(wpa_s, freqs_data,
+					  wpa_s->num_multichan_concurrent);
 
-	os_memset(p2p_freqs, 0, sizeof(int) * len);
+	os_memset(p2p_freqs, 0, sizeof(struct wpa_used_freq_data) * len);
 
 	for (i = 0, j = 0; i < num && j < len; i++) {
-		if (p2p_supported_freq(wpa_s->global->p2p, freqs[i]))
-			p2p_freqs[j++] = freqs[i];
+		if (p2p_supported_freq(wpa_s->global->p2p, freqs_data[i].freq))
+			p2p_freqs[j++] = freqs_data[i];
 	}
 
-	os_free(freqs);
+	os_free(freqs_data);
 
 	return j;
 }
@@ -2648,6 +2650,36 @@ static int freq_included(const struct p2p_channels *channels, unsigned int freq)
 
 }
 
+/**
+ * Pick the best frequency to use from all the currently used frequencies.
+ * The function assumes that all the freqs in freqs_data are valid P2P
+ * frequencies.
+ */
+static int wpas_p2p_pick_best_used_freq(struct wpa_supplicant *wpa_s,
+					struct wpa_used_freq_data *freqs_data,
+					unsigned int num)
+{
+	int i, c = 0;
+
+	if (num <= 0)
+		return 0;
+
+	for (i = 1; i < num; i++) {
+		/* 1. BSS/P2P Client interfaces have higher preference.
+		 * 2. In case of a match in the interface types, a frequency
+		 * with more interfaces using it get higher priority */
+		if (!(freqs_data[c].mode_flags & BIT(WPAS_MODE_INFRA))) {
+			if (freqs_data[i].mode_flags & BIT(WPAS_MODE_INFRA) ||
+			    (freqs_data[c].num < freqs_data[i].num))
+				c = i;
+		} else if ((freqs_data[i].mode_flags & BIT(WPAS_MODE_INFRA)) ||
+			   (freqs_data[c].num < freqs_data[i].num)) {
+				c = i;
+		}
+	}
+
+	return freqs_data[c].freq;
+}
 
 static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
 				  const u8 *go_dev_addr, const u8 *ssid,
@@ -2657,8 +2689,9 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	struct wpa_ssid *s;
-	int res;
+	struct wpa_used_freq_data *freqs_data;
 	struct wpa_supplicant *grp;
+	int best_freq;
 
 	if (!persistent_group) {
 		wpa_printf(MSG_DEBUG, "P2P: Invitation from " MACSTR
@@ -2733,11 +2766,24 @@ static u8 wpas_invitation_process(void *ctx, const u8 *sa, const u8 *bssid,
 accept_inv:
 	wpas_p2p_set_own_freq_preference(wpa_s, 0);
 
+	best_freq = 0;
+	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
+			       sizeof(struct wpa_used_freq_data));
+
+	if (freqs_data) {
+		int num_channels = wpa_s->num_multichan_concurrent;
+		int num = wpas_p2p_valid_oper_freqs(wpa_s, freqs_data,
+						    num_channels);
+		best_freq = wpas_p2p_pick_best_used_freq(wpa_s, freqs_data,
+							 num);
+		os_free(freqs_data);
+	}
+
 	/* Get one of the frequencies currently in use */
-	if (wpas_p2p_valid_oper_freqs(wpa_s, &res, 1) > 0) {
+	if (best_freq > 0) {
 		wpa_printf(MSG_DEBUG, "P2P: Trying to force channel to match a channel already used by one of the interfaces");
-		*force_freq = res;
-		wpas_p2p_set_own_freq_preference(wpa_s, res);
+		*force_freq = best_freq;
+		wpas_p2p_set_own_freq_preference(wpa_s, best_freq);
 	}
 
 	if (*force_freq > 0 && wpa_s->num_multichan_concurrent > 1 &&
@@ -3738,18 +3784,20 @@ static void wpas_p2p_check_join_scan_limit(struct wpa_supplicant *wpa_s)
 
 int wpas_p2p_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
 {
-	int *freqs, res, num, i;
+	int res, num, i;
+	struct wpa_used_freq_data *freqs_data;
 
 	if (wpas_p2p_num_unused_channels(wpa_s) > 0) {
 		/* Multiple channels are supported and not all are in use */
 		return 0;
 	}
 
-	freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
-	if (!freqs)
+	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
+			       sizeof(struct wpa_used_freq_data));
+	if (!freqs_data)
 		return 1;
 
-	num = wpas_p2p_valid_oper_freqs(wpa_s, freqs,
+	num = wpas_p2p_valid_oper_freqs(wpa_s, freqs_data,
 					wpa_s->num_multichan_concurrent);
 	if (num <= 0) {
 		if (num == 0) {
@@ -3763,7 +3811,7 @@ int wpas_p2p_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
 	}
 
 	for (i = 0; i < num; i++) {
-		if (freqs[i] == freq) {
+		if (freqs_data[i].freq == freq) {
 			wpa_printf(MSG_DEBUG, "P2P: Frequency %d MHz in use by another virtual interface and can be used",
 				   freq);
 			res = 0;
@@ -3774,7 +3822,7 @@ int wpas_p2p_check_freq_conflict(struct wpa_supplicant *wpa_s, int freq)
 	res = 1;
 
 exit_free:
-	os_free(freqs);
+	os_free(freqs_data);
 	return res;
 }
 
@@ -4158,15 +4206,24 @@ static int wpas_p2p_join_start(struct wpa_supplicant *wpa_s)
 static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 				int *force_freq, int *pref_freq)
 {
-	int *freqs, res;
-	unsigned int freq_in_use = 0, num, i;
+	int res;
+	struct wpa_used_freq_data *freqs_data;
+	unsigned int freq_in_use = 0, num, num_unused, i;
+	int best_freq;
 
-	freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
-	if (!freqs)
+	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
+			       sizeof(struct wpa_used_freq_data));
+	if (!freqs_data)
 		return -1;
 
-	num = get_shared_radio_freqs(wpa_s, freqs,
-				     wpa_s->num_multichan_concurrent);
+	num = wpas_p2p_valid_oper_freqs(wpa_s, freqs_data,
+					wpa_s->num_multichan_concurrent);
+
+	/* It is possible that the total number of used frequencies is bigger
+	 * than the number of frequencies used for P2P, so get the system wide
+	 * number of unused freqs */
+	num_unused = wpas_p2p_num_unused_channels(wpa_s);
+
 	wpa_printf(MSG_DEBUG,
 		   "P2P: Setup freqs: freq=%d num_MCC=%d shared_freqs=%u",
 		   freq, wpa_s->num_multichan_concurrent, num);
@@ -4181,12 +4238,13 @@ static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 		}
 
 		for (i = 0; i < num; i++) {
-			if (freqs[i] == freq)
+			if (freqs_data[i].freq == freq)
 				freq_in_use = 1;
 		}
 
-		if (num == wpa_s->num_multichan_concurrent && !freq_in_use) {
-			wpa_printf(MSG_DEBUG, "P2P: Cannot start P2P group on %u MHz as there are no available channels",
+		if (num_unused <= 0 && !freq_in_use) {
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Cannot start P2P group on %u MHz as there are no available channels",
 				   freq);
 			res = -2;
 			goto exit_free;
@@ -4197,36 +4255,38 @@ static int wpas_p2p_setup_freqs(struct wpa_supplicant *wpa_s, int freq,
 		goto exit_ok;
 	}
 
-	for (i = 0; i < num; i++) {
-		if (!p2p_supported_freq(wpa_s->global->p2p, freqs[i]))
-			continue;
+	best_freq = wpas_p2p_pick_best_used_freq(wpa_s, freqs_data, num);
 
-		wpa_printf(MSG_DEBUG, "P2P: Try to force us to use frequency (%u MHz) which is already in use",
-			   *force_freq);
-		*force_freq = freqs[i];
+	/* We have a candidate frequency to use */
+	if (best_freq > 0) {
+		if (num_unused > 0) {
+			*pref_freq = best_freq;
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Try to PREFER use frequency (%u MHz) which is already in use",
+				   *pref_freq);
 
-		if (*pref_freq == 0 && num < wpa_s->num_multichan_concurrent) {
-			wpa_printf(MSG_DEBUG, "P2P: Try to prefer a frequency we are already using");
-			*pref_freq = *force_freq;
-		}
-		break;
-	}
-
-	if (i == num) {
-		if (num < wpa_s->num_multichan_concurrent) {
-			wpa_printf(MSG_DEBUG, "P2P: Current operating channels are not available for P2P. Try to use another channel");
-			*force_freq = 0;
 		} else {
-			wpa_printf(MSG_DEBUG, "P2P: All channels are in use and none of them are P2P enabled. Cannot start P2P group");
-			res = -2;
-			goto exit_free;
+			*force_freq = best_freq;
+			wpa_printf(MSG_DEBUG,
+				   "P2P: Try to FORCE use frequency (%u MHz) which is already in use",
+				   *force_freq);
 		}
+
+	} else if (num_unused > 0) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Current operating channels are not available for P2P. Try to use another channel");
+		*force_freq = 0;
+	} else {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: All channels are in use and none of them are P2P enabled. Cannot start P2P group");
+		res = -2;
+		goto exit_free;
 	}
 
 exit_ok:
 	res = 0;
 exit_free:
-	os_free(freqs);
+	os_free(freqs_data);
 	return res;
 }
 
@@ -4550,9 +4610,10 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 				   int freq, int ht40, int vht,
 				   const struct p2p_channels *channels)
 {
-	int res, *freqs;
-	unsigned int pref_freq;
-	unsigned int num, i;
+	int num;
+	struct wpa_used_freq_data *freqs_data;
+	unsigned int pref_freq, cand_freq;
+	unsigned int i;
 
 	os_memset(params, 0, sizeof(*params));
 	params->role_go = 1;
@@ -4633,24 +4694,31 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 			   "known)", params->freq);
 	}
 
-	freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
-	if (!freqs)
+	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
+			       sizeof(struct wpa_used_freq_data));
+	if (!freqs_data)
 		return -1;
 
-	res = wpas_p2p_valid_oper_freqs(wpa_s, freqs,
+	num = wpas_p2p_valid_oper_freqs(wpa_s, freqs_data,
 					wpa_s->num_multichan_concurrent);
-	if (res < 0) {
-		os_free(freqs);
+	if (num < 0) {
+		os_free(freqs_data);
 		return -1;
 	}
-	num = res;
 
-	if (!freq) {
+	cand_freq = wpas_p2p_pick_best_used_freq(wpa_s, freqs_data, num);
+
+	/* First try the best used frequency if possible */
+	if (!freq && cand_freq > 0 && freq_included(channels, cand_freq)) {
+			params->freq = cand_freq;
+
+	} else if (!freq) {
+		/* Try any of the used frequencies */
 		for (i = 0; i < num; i++) {
-			if (freq_included(channels, freqs[i])) {
+			if (freq_included(channels, freqs_data[i].freq)) {
 				wpa_printf(MSG_DEBUG, "P2P: Force GO on a channel we are already using (%u MHz)",
-					   freqs[i]);
-				params->freq = freqs[i];
+					   freqs_data[i].freq);
+				params->freq = freqs_data[i].freq;
 				break;
 			}
 		}
@@ -4658,7 +4726,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 		if (i == num) {
 			if (wpas_p2p_num_unused_channels(wpa_s) <= 0) {
 				wpa_printf(MSG_DEBUG, "P2P: Cannot force GO on any of the channels we are already using");
-				os_free(freqs);
+				os_free(freqs_data);
 				return -1;
 			} else {
 				wpa_printf(MSG_DEBUG, "P2P: Cannot force GO on any of the channels we are already using. Use one of the free channels");
@@ -4666,21 +4734,21 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 		}
 	} else {
 		for (i = 0; i < num; i++) {
-			if (freqs[i] == freq)
+			if (freqs_data[i].freq == freq)
 				break;
 		}
 
 		if (i == num) {
 			if (wpas_p2p_num_unused_channels(wpa_s) <= 0) {
 				wpa_printf(MSG_DEBUG, "P2P: Cannot force GO on freq (%u MHz) as all the channels are in use", freq);
-				os_free(freqs);
+				os_free(freqs_data);
 				return -1;
 			} else {
 				wpa_printf(MSG_DEBUG, "P2P: Cannot force GO on any of the channels we are already using. Use one of the free channels");
 			}
 		}
 	}
-	os_free(freqs);
+	os_free(freqs_data);
 	return 0;
 }
 
@@ -6630,7 +6698,8 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 		int *freqs = NULL;
 		unsigned int num;
 
-		freqs = os_calloc(wpa_s->num_multichan_concurrent, sizeof(int));
+		freqs = os_calloc(wpa_s->num_multichan_concurrent,
+				  sizeof(int));
 		if (!freqs)
 			return;
 

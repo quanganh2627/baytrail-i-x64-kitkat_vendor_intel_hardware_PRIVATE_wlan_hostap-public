@@ -316,6 +316,17 @@ struct wpa_ssid_value {
 	size_t ssid_len;
 };
 
+struct wpa_used_freq_data {
+	/* The frequency that is used*/
+	int freq;
+
+	/* The number of interfaces using this freq */
+	unsigned int num;
+
+	/* The bit flag of the modes using this freq */
+	unsigned int mode_flags;
+};
+
 /**
  * struct wpa_supplicant - Internal data for wpa_supplicant interface
  *
@@ -887,6 +898,10 @@ static inline int network_is_persistent_group(struct wpa_ssid *ssid)
 int wpas_network_disabled(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
 
 int wpas_init_ext_pw(struct wpa_supplicant *wpa_s);
+
+int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
+				struct wpa_used_freq_data *freqs_data,
+				unsigned int len);
 
 int get_shared_radio_freqs(struct wpa_supplicant *wpa_s,
 			   int *freq_array, unsigned int len);
