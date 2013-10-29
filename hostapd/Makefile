@@ -3,7 +3,7 @@ CC=gcc
 endif
 
 ifndef CFLAGS
-CFLAGS = -MMD -O2 -Wall -g
+CFLAGS = -MMD -O2 -Wall -Wextra -Wno-unused-parameter -g
 endif
 
 CFLAGS += -I../src
