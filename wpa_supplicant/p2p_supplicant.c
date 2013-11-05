@@ -86,7 +86,7 @@
 #define P2P_CONCURRENT_SEARCH_DELAY 500
 #endif /* P2P_CONCURRENT_SEARCH_DELAY */
 
-#define P2P_MGMT_DEVICE_PREFIX		"p2p0"
+#define P2P_MGMT_DEVICE_PREFIX		"p2p"
 
 enum p2p_group_removal_reason {
 	P2P_GROUP_REMOVAL_UNKNOWN,
@@ -3418,7 +3418,14 @@ int wpas_p2p_add_p2pdev_interface(struct wpa_supplicant *wpa_s)
 	char force_name[100];
 	int ret;
 
-	os_snprintf(ifname, sizeof(ifname), "%s", P2P_MGMT_DEVICE_PREFIX);
+	/* Find the index of the parent interface + use it for the P2P Device */
+	char *ptr = wpa_s->ifname;
+	for (ptr = wpa_s->ifname; *ptr && !isdigit(*ptr); ptr++)
+		;
+
+	os_snprintf(ifname, sizeof(ifname), "%s%d", P2P_MGMT_DEVICE_PREFIX,
+		    atoi(ptr));
+
 	force_name[0] = '\0';
 	wpa_s->pending_interface_type = WPA_IF_P2P_DEVICE;
 	ret = wpa_drv_if_add(wpa_s, WPA_IF_P2P_DEVICE, ifname, NULL, NULL,
