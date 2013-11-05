@@ -380,7 +380,7 @@ static inline int wpa_drv_if_add(struct wpa_supplicant *wpa_s,
 	if (wpa_s->driver->if_add)
 		return wpa_s->driver->if_add(wpa_s->drv_priv, type, ifname,
 					     addr, bss_ctx, NULL, force_ifname,
-					     if_addr, bridge);
+					     if_addr, bridge, 0);
 	return -1;
 }
 
@@ -706,6 +706,15 @@ static inline int wpa_drv_status(struct wpa_supplicant *wpa_s,
 	if (!wpa_s->driver->status)
 		return -1;
 	return wpa_s->driver->status(wpa_s->drv_priv, buf, buflen);
+}
+
+static inline int wpa_drv_set_qos_map(struct wpa_supplicant *wpa_s,
+				      const u8 *qos_map_set, u8 qos_map_set_len)
+{
+	if (!wpa_s->driver->set_qos_map)
+		return -1;
+	return wpa_s->driver->set_qos_map(wpa_s->drv_priv, qos_map_set,
+					  qos_map_set_len);
 }
 
 #ifdef ANDROID

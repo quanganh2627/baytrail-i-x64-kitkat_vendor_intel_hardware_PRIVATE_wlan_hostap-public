@@ -1479,6 +1479,7 @@ void eapol_sm_notify_config(struct eapol_sm *sm,
 		eap_set_fast_reauth(sm->eap, conf->fast_reauth);
 		eap_set_workaround(sm->eap, conf->workaround);
 		eap_set_force_disabled(sm->eap, conf->eap_disabled);
+		eap_set_external_sim(sm->eap, conf->external_sim);
 	}
 }
 
@@ -2049,4 +2050,16 @@ int eapol_sm_failed(struct eapol_sm *sm)
 	if (sm == NULL)
 		return 0;
 	return !sm->eapSuccess && sm->eapFail;
+}
+
+
+int eapol_sm_get_eap_proxy_imsi(struct eapol_sm *sm, char *imsi, size_t *len)
+{
+#ifdef CONFIG_EAP_PROXY
+	if (sm->eap_proxy == NULL)
+		return -1;
+	return eap_proxy_get_imsi(sm->eap_proxy, imsi, len);
+#else /* CONFIG_EAP_PROXY */
+	return -1;
+#endif /* CONFIG_EAP_PROXY */
 }

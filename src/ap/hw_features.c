@@ -45,6 +45,36 @@ void hostapd_free_hw_features(struct hostapd_hw_modes *hw_features,
 }
 
 
+#ifndef CONFIG_NO_STDOUT_DEBUG
+static char * dfs_info(struct hostapd_channel_data *chan)
+{
+	static char info[256];
+	char *state;
+
+	switch (chan->flag & HOSTAPD_CHAN_DFS_MASK) {
+	case HOSTAPD_CHAN_DFS_UNKNOWN:
+		state = "unknown";
+		break;
+	case HOSTAPD_CHAN_DFS_USABLE:
+		state = "usable";
+		break;
+	case HOSTAPD_CHAN_DFS_UNAVAILABLE:
+		state = "unavailable";
+		break;
+	case HOSTAPD_CHAN_DFS_AVAILABLE:
+		state = "available";
+		break;
+	default:
+		return "";
+	}
+	os_snprintf(info, sizeof(info), " (DFS state = %s)", state);
+	info[sizeof(info) - 1] = '\0';
+
+	return info;
+}
+#endif /* CONFIG_NO_STDOUT_DEBUG */
+
+
 int hostapd_get_hw_features(struct hostapd_iface *iface)
 {
 	struct hostapd_data *hapd = iface->bss[0];
@@ -71,30 +101,40 @@ int hostapd_get_hw_features(struct hostapd_iface *iface)
 
 	for (i = 0; i < num_modes; i++) {
 		struct hostapd_hw_modes *feature = &modes[i];
+		int dfs_enabled = hapd->iconf->ieee80211h &&
+			(iface->drv_flags & WPA_DRIVER_FLAGS_RADAR);
+
 		/* set flag for channels we can use in current regulatory
 		 * domain */
 		for (j = 0; j < feature->num_channels; j++) {
+			int dfs = 0;
+
 			/*
 			 * Disable all channels that are marked not to allow
-			 * IBSS operation or active scanning. In addition,
-			 * disable all channels that require radar detection,
-			 * since that (in addition to full DFS) is not yet
-			 * supported.
+			 * IBSS operation or active scanning.
+			 * Use radar channels only if the driver supports DFS.
 			 */
-			if (feature->channels[j].flag &
-			    (HOSTAPD_CHAN_NO_IBSS |
-			     HOSTAPD_CHAN_PASSIVE_SCAN |
-			     HOSTAPD_CHAN_RADAR))
+			if ((feature->channels[j].flag &
+			     HOSTAPD_CHAN_RADAR) && dfs_enabled) {
+				dfs = 1;
+			} else if (feature->channels[j].flag &
+				   (HOSTAPD_CHAN_NO_IBSS |
+				    HOSTAPD_CHAN_PASSIVE_SCAN |
+				    HOSTAPD_CHAN_RADAR)) {
 				feature->channels[j].flag |=
 					HOSTAPD_CHAN_DISABLED;
+			}
+
 			if (feature->channels[j].flag & HOSTAPD_CHAN_DISABLED)
 				continue;
+
 			wpa_printf(MSG_MSGDUMP, "Allowed channel: mode=%d "
-				   "chan=%d freq=%d MHz max_tx_power=%d dBm",
+				   "chan=%d freq=%d MHz max_tx_power=%d dBm%s",
 				   feature->mode,
 				   feature->channels[j].chan,
 				   feature->channels[j].freq,
-				   feature->channels[j].max_tx_power);
+				   feature->channels[j].max_tx_power,
+				   dfs ? dfs_info(&feature->channels[j]) : "");
 		}
 	}
 
@@ -230,7 +270,7 @@ static int ieee80211n_allowed_ht40_channel_pair(struct hostapd_iface *iface)
 		first = sec_chan;
 
 	ok = 0;
-	for (k = 0; k < sizeof(allowed) / sizeof(allowed[0]); k++) {
+	for (k = 0; k < ARRAY_SIZE(allowed); k++) {
 		if (first == allowed[k]) {
 			ok = 1;
 			break;
@@ -613,23 +653,26 @@ static int ieee80211n_supported_ht_capab(struct hostapd_iface *iface)
 	return 1;
 }
 
+
 #ifdef CONFIG_IEEE80211AC
+
 static int ieee80211ac_cap_check(u32 hw, u32 conf, u32 cap, const char *name)
 {
 	u32 req_cap = conf & cap;
 
 	/*
-	 * make sure we support all requested capabilities.
-	 * NOTE: we assume that 'cap' represents a capability mask,
-	 * not discrete value.
+	 * Make sure we support all requested capabilities.
+	 * NOTE: We assume that 'cap' represents a capability mask,
+	 * not a discrete value.
 	 */
 	if ((hw & req_cap) != req_cap) {
-		wpa_printf(MSG_ERROR, "Driver does not support configured "
-			   "VHT capability [%s]", name);
+		wpa_printf(MSG_ERROR, "Driver does not support configured VHT capability [%s]",
+			   name);
 		return 0;
 	}
 	return 1;
 }
+
 
 static int ieee80211ac_cap_check_max(u32 hw, u32 conf, u32 cap,
 				     const char *name)
@@ -639,13 +682,13 @@ static int ieee80211ac_cap_check_max(u32 hw, u32 conf, u32 cap,
 
 	if (conf_val > hw_max) {
 		int offset = find_first_bit(cap);
-		wpa_printf(MSG_ERROR, "Configured VHT capability [%s] exceeds "
-			   "max value supported by the driver (%d > %d)",
+		wpa_printf(MSG_ERROR, "Configured VHT capability [%s] exceeds max value supported by the driver (%d > %d)",
 			   name, conf_val >> offset, hw_max >> offset);
 		return 0;
 	}
 	return 1;
 }
+
 
 static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
 {
@@ -655,16 +698,17 @@ static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
 	wpa_printf(MSG_DEBUG, "hw vht capab: 0x%x, conf vht capab: 0x%x",
 		   hw, conf);
 
-#define VHT_CAP_CHECK(cap) do {\
+#define VHT_CAP_CHECK(cap) \
+	do { \
 		if (!ieee80211ac_cap_check(hw, conf, cap, #cap)) \
 			return 0; \
 	} while (0)
 
-#define VHT_CAP_CHECK_MAX(cap) do {\
+#define VHT_CAP_CHECK_MAX(cap) \
+	do { \
 		if (!ieee80211ac_cap_check_max(hw, conf, cap, #cap)) \
 			return 0; \
 	} while (0)
-
 
 	VHT_CAP_CHECK_MAX(VHT_CAP_MAX_MPDU_LENGTH_MASK);
 	VHT_CAP_CHECK(VHT_CAP_SUPP_CHAN_WIDTH_160MHZ);
@@ -804,9 +848,12 @@ static void hostapd_notify_bad_chans(struct hostapd_iface *iface)
 }
 
 
-int hostapd_acs_completed(struct hostapd_iface *iface)
+int hostapd_acs_completed(struct hostapd_iface *iface, int err)
 {
-	int ret;
+	int ret = -1;
+
+	if (err)
+		goto out;
 
 	switch (hostapd_check_chans(iface)) {
 	case HOSTAPD_CHAN_VALID:
@@ -814,23 +861,25 @@ int hostapd_acs_completed(struct hostapd_iface *iface)
 	case HOSTAPD_CHAN_ACS:
 		wpa_printf(MSG_ERROR, "ACS error - reported complete, but no result available");
 		hostapd_notify_bad_chans(iface);
-		return -1;
+		goto out;
 	case HOSTAPD_CHAN_INVALID:
 	default:
 		wpa_printf(MSG_ERROR, "ACS picked unusable channels");
 		hostapd_notify_bad_chans(iface);
-		return -1;
+		goto out;
 	}
 
 	ret = hostapd_check_ht_capab(iface);
 	if (ret < 0)
-		return -1;
+		goto out;
 	if (ret == 1) {
 		wpa_printf(MSG_DEBUG, "Interface initialization will be completed in a callback");
 		return 0;
 	}
 
-	return hostapd_setup_interface_complete(iface, 0);
+	ret = 0;
+out:
+	return hostapd_setup_interface_complete(iface, ret);
 }
 
 

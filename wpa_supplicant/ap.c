@@ -41,6 +41,8 @@
 static void wpas_wps_ap_pin_timeout(void *eloop_data, void *user_ctx);
 #endif /* CONFIG_WPS */
 
+
+#ifdef CONFIG_IEEE80211N
 static void wpas_conf_ap_vht(struct wpa_supplicant *wpa_s,
 			     struct hostapd_config *conf,
 			     struct hostapd_hw_modes *mode)
@@ -55,20 +57,23 @@ static void wpas_conf_ap_vht(struct wpa_supplicant *wpa_s,
 	if (!center_chan)
 		goto no_vht;
 
-	/* use 80mhz channel */
+	/* Use 80 MHz channel */
 	conf->vht_oper_chwidth = 1;
 	conf->vht_oper_centr_freq_seg0_idx = center_chan;
 	return;
+
 no_vht:
 	conf->vht_oper_centr_freq_seg0_idx =
 		channel + conf->secondary_channel * 2;
 }
+#endif /* CONFIG_IEEE80211N */
+
 
 static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 				  struct wpa_ssid *ssid,
 				  struct hostapd_config *conf)
 {
-	struct hostapd_bss_config *bss = &conf->bss[0];
+	struct hostapd_bss_config *bss = conf->bss[0];
 
 	conf->driver = wpa_s->driver;
 
@@ -663,8 +668,8 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 	}
 
 	if (params.uapsd > 0) {
-		conf->bss->wmm_enabled = 1;
-		conf->bss->wmm_uapsd = 1;
+		conf->bss[0]->wmm_enabled = 1;
+		conf->bss[0]->wmm_uapsd = 1;
 	}
 
 	if (wpa_supplicant_conf_ap(wpa_s, ssid, conf)) {
@@ -675,9 +680,9 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_P2P
 	if (ssid->mode == WPAS_MODE_P2P_GO)
-		conf->bss[0].p2p = P2P_ENABLED | P2P_GROUP_OWNER;
+		conf->bss[0]->p2p = P2P_ENABLED | P2P_GROUP_OWNER;
 	else if (ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION)
-		conf->bss[0].p2p = P2P_ENABLED | P2P_GROUP_OWNER |
+		conf->bss[0]->p2p = P2P_ENABLED | P2P_GROUP_OWNER |
 			P2P_GROUP_FORMATION;
 #endif /* CONFIG_P2P */
 
@@ -692,7 +697,7 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < conf->num_bss; i++) {
 		hapd_iface->bss[i] =
 			hostapd_alloc_bss_data(hapd_iface, conf,
-					       &conf->bss[i]);
+					       conf->bss[i]);
 		if (hapd_iface->bss[i] == NULL) {
 			wpa_supplicant_ap_deinit(wpa_s);
 			return -1;
@@ -1144,9 +1149,9 @@ int wpa_supplicant_ap_update_beacon(struct wpa_supplicant *wpa_s)
 
 #ifdef CONFIG_P2P
 	if (ssid->mode == WPAS_MODE_P2P_GO)
-		iface->conf->bss[0].p2p = P2P_ENABLED | P2P_GROUP_OWNER;
+		iface->conf->bss[0]->p2p = P2P_ENABLED | P2P_GROUP_OWNER;
 	else if (ssid->mode == WPAS_MODE_P2P_GROUP_FORMATION)
-		iface->conf->bss[0].p2p = P2P_ENABLED | P2P_GROUP_OWNER |
+		iface->conf->bss[0]->p2p = P2P_ENABLED | P2P_GROUP_OWNER |
 			P2P_GROUP_FORMATION;
 #endif /* CONFIG_P2P */
 

@@ -122,7 +122,7 @@ void hostapd_get_vht_capab(struct hostapd_data *hapd,
 	cap = le_to_host32(neg_vht_cap->vht_capabilities_info);
 	own_cap = hapd->iconf->vht_capab;
 
-	/* mask out symmetric VHT capabilities we don't support. */
+	/* mask out symmetric VHT capabilities we don't support */
 	sym_caps = VHT_CAP_SHORT_GI_80 | VHT_CAP_SHORT_GI_160;
 	cap &= ~sym_caps | (own_cap & sym_caps);
 
@@ -141,7 +141,7 @@ void hostapd_get_vht_capab(struct hostapd_data *hapd,
 	if (!(own_cap & VHT_CAP_MU_BEAMFORMEE_CAPABLE))
 		cap &= ~VHT_CAP_MU_BEAMFORMER_CAPABLE;
 
-	/* mask channels widths we don't support */
+	/* mask channel widths we don't support */
 	switch (own_cap & VHT_CAP_SUPP_CHAN_WIDTH_MASK) {
 	case VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ:
 		break;
@@ -153,6 +153,7 @@ void hostapd_get_vht_capab(struct hostapd_data *hapd,
 		break;
 	default:
 		cap &= ~VHT_CAP_SUPP_CHAN_WIDTH_MASK;
+		break;
 	}
 
 	if (!(cap & VHT_CAP_SUPP_CHAN_WIDTH_MASK))

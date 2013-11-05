@@ -172,7 +172,12 @@ static struct wpabuf * p2p_build_go_neg_req(struct p2p_data *p2p,
 	p2p_buf_update_ie_hdr(buf, len);
 
 	/* WPS IE with Device Password ID attribute */
-	p2p_build_wps_ie(p2p, buf, p2p_wps_method_pw_id(peer->wps_method), 0);
+	if (p2p_build_wps_ie(p2p, buf, p2p_wps_method_pw_id(peer->wps_method),
+			     0) < 0) {
+		p2p_dbg(p2p, "Failed to build WPS IE for GO Negotiation Request");
+		wpabuf_free(buf);
+		return NULL;
+	}
 
 #ifdef CONFIG_WIFI_DISPLAY
 	if (p2p->wfd_ie_go_neg)
@@ -307,9 +312,13 @@ static struct wpabuf * p2p_build_go_neg_resp(struct p2p_data *p2p,
 	p2p_buf_update_ie_hdr(buf, len);
 
 	/* WPS IE with Device Password ID attribute */
-	p2p_build_wps_ie(p2p, buf,
-			 p2p_wps_method_pw_id(peer ? peer->wps_method :
-					      WPS_NOT_READY), 0);
+	if (p2p_build_wps_ie(p2p, buf,
+			     p2p_wps_method_pw_id(peer ? peer->wps_method :
+						  WPS_NOT_READY), 0) < 0) {
+		p2p_dbg(p2p, "Failed to build WPS IE for GO Negotiation Response");
+		wpabuf_free(buf);
+		return NULL;
+	}
 
 #ifdef CONFIG_WIFI_DISPLAY
 	if (p2p->wfd_ie_go_neg)
@@ -406,7 +415,6 @@ void p2p_reselect_channel(struct p2p_data *p2p,
 	/* Try a channel where we might be able to use VHT */
 	for (i = 0; i < intersection->reg_classes; i++) {
 		struct p2p_reg_class *c = &intersection->reg_class[i];
-		p2p_dbg(p2p, "(reg class: %d)", c->reg_class);
 		if (c->reg_class == 128) {
 			p2p_dbg(p2p, "Pick possible VHT channel (reg_class %u channel %u) from intersection",
 				c->reg_class, c->channel[0]);
@@ -477,23 +485,22 @@ void p2p_reselect_channel(struct p2p_data *p2p,
 static int p2p_go_select_channel(struct p2p_data *p2p, struct p2p_device *dev,
 				 u8 *status)
 {
-	struct p2p_channels intersection;
-	size_t i;
+	struct p2p_channels tmp, intersection;
 
-	p2p_channels_intersect(&p2p->channels, &dev->channels, &intersection);
+	p2p_channels_dump(p2p, "own channels", &p2p->channels);
+	p2p_channels_dump(p2p, "peer channels", &dev->channels);
+	p2p_channels_intersect(&p2p->channels, &dev->channels, &tmp);
+	p2p_channels_dump(p2p, "intersection", &tmp);
+	p2p_channels_remove_freqs(&tmp, &p2p->no_go_freq);
+	p2p_channels_dump(p2p, "intersection after no-GO removal", &tmp);
+	p2p_channels_intersect(&tmp, &p2p->cfg->channels, &intersection);
+	p2p_channels_dump(p2p, "intersection with local channel list",
+			  &intersection);
 	if (intersection.reg_classes == 0 ||
 	    intersection.reg_class[0].channels == 0) {
 		*status = P2P_SC_FAIL_NO_COMMON_CHANNELS;
 		p2p_dbg(p2p, "No common channels found");
 		return -1;
-	}
-
-	for (i = 0; i < intersection.reg_classes; i++) {
-		struct p2p_reg_class *c;
-		c = &intersection.reg_class[i];
-		p2p_dbg(p2p, "reg_class %u", c->reg_class);
-		wpa_hexdump(MSG_DEBUG, "P2P: channels",
-			    c->channel, c->channels);
 	}
 
 	if (!p2p_channels_includes(&intersection, p2p->op_reg_class,

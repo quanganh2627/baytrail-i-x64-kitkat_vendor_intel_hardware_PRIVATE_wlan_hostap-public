@@ -32,6 +32,7 @@
 #include "ap_config.h"
 #include "p2p_hostapd.h"
 #include "gas_serv.h"
+#include "dfs.h"
 
 
 static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason);
@@ -61,10 +62,22 @@ int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
 
 static void hostapd_reload_bss(struct hostapd_data *hapd)
 {
+	struct hostapd_ssid *ssid;
+
 #ifndef CONFIG_NO_RADIUS
 	radius_client_reconfig(hapd->radius, hapd->conf->radius);
 #endif /* CONFIG_NO_RADIUS */
 
+	ssid = &hapd->conf->ssid;
+	if (!ssid->wpa_psk_set && ssid->wpa_psk && !ssid->wpa_psk->next &&
+	    ssid->wpa_passphrase_set && ssid->wpa_passphrase) {
+		/*
+		 * Force PSK to be derived again since SSID or passphrase may
+		 * have changed.
+		 */
+		os_free(ssid->wpa_psk);
+		ssid->wpa_psk = NULL;
+	}
 	if (hostapd_setup_wpa_psk(hapd->conf)) {
 		wpa_printf(MSG_ERROR, "Failed to re-configure WPA PSK "
 			   "after reloading configuration");
@@ -159,7 +172,7 @@ int hostapd_reload_config(struct hostapd_iface *iface)
 	for (j = 0; j < iface->num_bss; j++) {
 		hapd = iface->bss[j];
 		hapd->iconf = newconf;
-		hapd->conf = &newconf->bss[j];
+		hapd->conf = newconf->bss[j];
 		hostapd_reload_bss(hapd);
 	}
 
@@ -244,8 +257,7 @@ static void hostapd_free_hapd_data(struct hostapd_data *hapd)
 
 	authsrv_deinit(hapd);
 
-	if (hapd->interface_added &&
-	    hostapd_if_remove(hapd, WPA_IF_AP_BSS, hapd->conf->iface)) {
+	if (hostapd_if_remove(hapd, WPA_IF_AP_BSS, hapd->conf->iface)) {
 		wpa_printf(MSG_WARNING, "Failed to remove BSS interface %s",
 			   hapd->conf->iface);
 	}
@@ -429,7 +441,7 @@ static int hostapd_validate_bssid_configuration(struct hostapd_iface *iface)
 	/* Determine the bits necessary to any configured BSSIDs,
 	   if they are higher than the number of BSSIDs. */
 	for (j = 0; j < iface->conf->num_bss; j++) {
-		if (hostapd_mac_comp_empty(iface->conf->bss[j].bssid) == 0) {
+		if (hostapd_mac_comp_empty(iface->conf->bss[j]->bssid) == 0) {
 			if (j)
 				auto_addr++;
 			continue;
@@ -437,7 +449,7 @@ static int hostapd_validate_bssid_configuration(struct hostapd_iface *iface)
 
 		for (i = 0; i < ETH_ALEN; i++) {
 			mask[i] |=
-				iface->conf->bss[j].bssid[i] ^
+				iface->conf->bss[j]->bssid[i] ^
 				hapd->own_addr[i];
 		}
 	}
@@ -502,7 +514,7 @@ static int mac_in_conf(struct hostapd_config *conf, const void *a)
 	size_t i;
 
 	for (i = 0; i < conf->num_bss; i++) {
-		if (hostapd_mac_comp(conf->bss[i].bssid, a) == 0) {
+		if (hostapd_mac_comp(conf->bss[i]->bssid, a) == 0) {
 			return 1;
 		}
 	}
@@ -596,7 +608,8 @@ hostapd_das_disconnect(void *ctx, struct radius_das_attrs *attr)
 /**
  * hostapd_setup_bss - Per-BSS setup (initialization)
  * @hapd: Pointer to BSS data
- * @first: Whether this BSS is the first BSS of an interface
+ * @first: Whether this BSS is the first BSS of an interface; -1 = not first,
+ *	but interface may exist
  *
  * This function is used to initialize all per-BSS data structures and
  * resources. This gets called in a loop for each BSS when an interface is
@@ -611,7 +624,7 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 	char force_ifname[IFNAMSIZ];
 	u8 if_addr[ETH_ALEN];
 
-	if (!first) {
+	if (!first || first == -1) {
 		if (hostapd_mac_comp_empty(hapd->conf->bssid) == 0) {
 			/* Allocate the next available BSSID. */
 			do {
@@ -631,12 +644,11 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 			}
 		}
 
-		hapd->interface_added = 1;
 		if (hostapd_if_add(hapd->iface->bss[0], WPA_IF_AP_BSS,
 				   hapd->conf->iface, hapd->own_addr, hapd,
 				   &hapd->drv_priv, force_ifname, if_addr,
 				   hapd->conf->bridge[0] ? hapd->conf->bridge :
-				   NULL)) {
+				   NULL, first == -1)) {
 			wpa_printf(MSG_ERROR, "Failed to add BSS (BSSID="
 				   MACSTR ")", MAC2STR(hapd->own_addr));
 			return -1;
@@ -849,14 +861,15 @@ static void hostapd_set_acl(struct hostapd_data *hapd)
 
 	if (hapd->iface->drv_max_acl_mac_addrs == 0)
 		return;
-	if (!(conf->bss->num_accept_mac || conf->bss->num_deny_mac))
+	if (!(conf->bss[0]->num_accept_mac || conf->bss[0]->num_deny_mac))
 		return;
 
-	if (conf->bss->macaddr_acl == DENY_UNLESS_ACCEPTED) {
-		if (conf->bss->num_accept_mac) {
+	if (conf->bss[0]->macaddr_acl == DENY_UNLESS_ACCEPTED) {
+		if (conf->bss[0]->num_accept_mac) {
 			accept_acl = 1;
-			err = hostapd_set_acl_list(hapd, conf->bss->accept_mac,
-						   conf->bss->num_accept_mac,
+			err = hostapd_set_acl_list(hapd,
+						   conf->bss[0]->accept_mac,
+						   conf->bss[0]->num_accept_mac,
 						   accept_acl);
 			if (err) {
 				wpa_printf(MSG_DEBUG, "Failed to set accept acl");
@@ -865,11 +878,11 @@ static void hostapd_set_acl(struct hostapd_data *hapd)
 		} else {
 			wpa_printf(MSG_DEBUG, "Mismatch between ACL Policy & Accept/deny lists file");
 		}
-	} else if (conf->bss->macaddr_acl == ACCEPT_UNLESS_DENIED) {
-		if (conf->bss->num_deny_mac) {
+	} else if (conf->bss[0]->macaddr_acl == ACCEPT_UNLESS_DENIED) {
+		if (conf->bss[0]->num_deny_mac) {
 			accept_acl = 0;
-			err = hostapd_set_acl_list(hapd, conf->bss->deny_mac,
-						   conf->bss->num_deny_mac,
+			err = hostapd_set_acl_list(hapd, conf->bss[0]->deny_mac,
+						   conf->bss[0]->num_deny_mac,
 						   accept_acl);
 			if (err) {
 				wpa_printf(MSG_DEBUG, "Failed to set deny acl");
@@ -931,6 +944,9 @@ static int setup_interface(struct hostapd_iface *iface)
 				   "be completed in a callback");
 			return 0;
 		}
+
+		if (iface->conf->ieee80211h)
+			wpa_printf(MSG_DEBUG, "DFS support is enabled");
 	}
 	return hostapd_setup_interface_complete(iface, 0);
 }
@@ -950,11 +966,22 @@ int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err)
 
 	wpa_printf(MSG_DEBUG, "Completing interface initialization");
 	if (hapd->iconf->channel) {
+#ifdef NEED_AP_MLME
+		int res;
+#endif /* NEED_AP_MLME */
+
 		iface->freq = hostapd_hw_get_freq(hapd, hapd->iconf->channel);
 		wpa_printf(MSG_DEBUG, "Mode: %s  Channel: %d  "
 			   "Frequency: %d MHz",
 			   hostapd_hw_mode_txt(hapd->iconf->hw_mode),
 			   hapd->iconf->channel, iface->freq);
+
+#ifdef NEED_AP_MLME
+		/* Check DFS */
+		res = hostapd_handle_dfs(hapd);
+		if (res <= 0)
+			return res;
+#endif /* NEED_AP_MLME */
 
 		if (hostapd_set_freq(hapd, hapd->iconf->hw_mode, iface->freq,
 				     hapd->iconf->channel,
@@ -1100,13 +1127,13 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
 
 void hostapd_interface_deinit(struct hostapd_iface *iface)
 {
-	size_t j;
+	int j;
 
 	if (iface == NULL)
 		return;
 
 	hostapd_cleanup_iface_pre(iface);
-	for (j = 0; j < iface->num_bss; j++) {
+	for (j = iface->num_bss - 1; j >= 0; j--) {
 		struct hostapd_data *hapd = iface->bss[j];
 		hostapd_free_stas(hapd);
 		hostapd_flush_old_stations(hapd, WLAN_REASON_DEAUTH_LEAVING);
@@ -1125,7 +1152,189 @@ void hostapd_interface_free(struct hostapd_iface *iface)
 }
 
 
-#ifdef HOSTAPD
+/**
+ * hostapd_init - Allocate and initialize per-interface data
+ * @config_file: Path to the configuration file
+ * Returns: Pointer to the allocated interface data or %NULL on failure
+ *
+ * This function is used to allocate main data structures for per-interface
+ * data. The allocated data buffer will be freed by calling
+ * hostapd_cleanup_iface().
+ */
+struct hostapd_iface * hostapd_init(struct hapd_interfaces *interfaces,
+				    const char *config_file)
+{
+	struct hostapd_iface *hapd_iface = NULL;
+	struct hostapd_config *conf = NULL;
+	struct hostapd_data *hapd;
+	size_t i;
+
+	hapd_iface = os_zalloc(sizeof(*hapd_iface));
+	if (hapd_iface == NULL)
+		goto fail;
+
+	hapd_iface->config_fname = os_strdup(config_file);
+	if (hapd_iface->config_fname == NULL)
+		goto fail;
+
+	conf = interfaces->config_read_cb(hapd_iface->config_fname);
+	if (conf == NULL)
+		goto fail;
+	hapd_iface->conf = conf;
+
+	hapd_iface->num_bss = conf->num_bss;
+	hapd_iface->bss = os_calloc(conf->num_bss,
+				    sizeof(struct hostapd_data *));
+	if (hapd_iface->bss == NULL)
+		goto fail;
+
+	for (i = 0; i < conf->num_bss; i++) {
+		hapd = hapd_iface->bss[i] =
+			hostapd_alloc_bss_data(hapd_iface, conf,
+					       conf->bss[i]);
+		if (hapd == NULL)
+			goto fail;
+		hapd->msg_ctx = hapd;
+	}
+
+	return hapd_iface;
+
+fail:
+	wpa_printf(MSG_ERROR, "Failed to set up interface with %s",
+		   config_file);
+	if (conf)
+		hostapd_config_free(conf);
+	if (hapd_iface) {
+		os_free(hapd_iface->config_fname);
+		os_free(hapd_iface->bss);
+		os_free(hapd_iface);
+	}
+	return NULL;
+}
+
+
+static int ifname_in_use(struct hapd_interfaces *interfaces, const char *ifname)
+{
+	size_t i, j;
+
+	for (i = 0; i < interfaces->count; i++) {
+		struct hostapd_iface *iface = interfaces->iface[i];
+		for (j = 0; j < iface->num_bss; j++) {
+			struct hostapd_data *hapd = iface->bss[j];
+			if (os_strcmp(ifname, hapd->conf->iface) == 0)
+				return 1;
+		}
+	}
+
+	return 0;
+}
+
+
+struct hostapd_iface *
+hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
+			   const char *config_fname, int debug)
+{
+	struct hostapd_iface *new_iface = NULL, *iface = NULL;
+	struct hostapd_data *hapd;
+	int k;
+	size_t i, bss_idx;
+
+	if (!phy || !*phy)
+		return NULL;
+
+	for (i = 0; i < interfaces->count; i++) {
+		if (os_strcmp(interfaces->iface[i]->phy, phy) == 0) {
+			iface = interfaces->iface[i];
+			break;
+		}
+	}
+
+	wpa_printf(MSG_ERROR, "Configuration file: %s (phy %s)%s",
+		   config_fname, phy, iface ? "" : " --> new PHY");
+	if (iface) {
+		struct hostapd_config *conf;
+		struct hostapd_bss_config **tmp_conf;
+		struct hostapd_data **tmp_bss;
+		struct hostapd_bss_config *bss;
+		const char *ifname;
+
+		/* Add new BSS to existing iface */
+		conf = interfaces->config_read_cb(config_fname);
+		if (conf == NULL)
+			return NULL;
+		if (conf->num_bss > 1) {
+			wpa_printf(MSG_ERROR, "Multiple BSSes specified in BSS-config");
+			hostapd_config_free(conf);
+			return NULL;
+		}
+
+		ifname = conf->bss[0]->iface;
+		if (ifname[0] != '\0' && ifname_in_use(interfaces, ifname)) {
+			wpa_printf(MSG_ERROR,
+				   "Interface name %s already in use", ifname);
+			hostapd_config_free(conf);
+			return NULL;
+		}
+
+		tmp_conf = os_realloc_array(
+			iface->conf->bss, iface->conf->num_bss + 1,
+			sizeof(struct hostapd_bss_config *));
+		tmp_bss = os_realloc_array(iface->bss, iface->num_bss + 1,
+					   sizeof(struct hostapd_data *));
+		if (tmp_bss)
+			iface->bss = tmp_bss;
+		if (tmp_conf) {
+			iface->conf->bss = tmp_conf;
+			iface->conf->last_bss = tmp_conf[0];
+		}
+		if (tmp_bss == NULL || tmp_conf == NULL) {
+			hostapd_config_free(conf);
+			return NULL;
+		}
+		bss = iface->conf->bss[iface->conf->num_bss] = conf->bss[0];
+		iface->conf->num_bss++;
+
+		hapd = hostapd_alloc_bss_data(iface, iface->conf, bss);
+		if (hapd == NULL) {
+			iface->conf->num_bss--;
+			hostapd_config_free(conf);
+			return NULL;
+		}
+		iface->conf->last_bss = bss;
+		iface->bss[iface->num_bss] = hapd;
+		hapd->msg_ctx = hapd;
+
+		bss_idx = iface->num_bss++;
+		conf->num_bss--;
+		conf->bss[0] = NULL;
+		hostapd_config_free(conf);
+	} else {
+		/* Add a new iface with the first BSS */
+		new_iface = iface = hostapd_init(interfaces, config_fname);
+		if (!iface)
+			return NULL;
+		os_strlcpy(iface->phy, phy, sizeof(iface->phy));
+		iface->interfaces = interfaces;
+		bss_idx = 0;
+	}
+
+	for (k = 0; k < debug; k++) {
+		if (iface->bss[bss_idx]->conf->logger_stdout_level > 0)
+			iface->bss[bss_idx]->conf->logger_stdout_level--;
+	}
+
+	if (iface->conf->bss[bss_idx]->iface[0] == '\0' &&
+	    !hostapd_drv_none(iface->bss[bss_idx])) {
+		wpa_printf(MSG_ERROR, "Interface name not specified in %s",
+			   config_fname);
+		if (new_iface)
+			hostapd_interface_deinit_free(new_iface);
+		return NULL;
+	}
+
+	return iface;
+}
+
 
 void hostapd_interface_deinit_free(struct hostapd_iface *iface)
 {
@@ -1146,12 +1355,12 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
 {
 	if (hapd_iface->bss[0]->drv_priv != NULL) {
 		wpa_printf(MSG_ERROR, "Interface %s already enabled",
-			   hapd_iface->conf->bss[0].iface);
+			   hapd_iface->conf->bss[0]->iface);
 		return -1;
 	}
 
 	wpa_printf(MSG_DEBUG, "Enable interface %s",
-		   hapd_iface->conf->bss[0].iface);
+		   hapd_iface->conf->bss[0]->iface);
 
 	if (hapd_iface->interfaces == NULL ||
 	    hapd_iface->interfaces->driver_init == NULL ||
@@ -1169,19 +1378,17 @@ int hostapd_reload_iface(struct hostapd_iface *hapd_iface)
 	size_t j;
 
 	wpa_printf(MSG_DEBUG, "Reload interface %s",
-		   hapd_iface->conf->bss[0].iface);
-	for (j = 0; j < hapd_iface->num_bss; j++) {
-		hostapd_flush_old_stations(hapd_iface->bss[j],
-					   WLAN_REASON_PREV_AUTH_NOT_VALID);
-
-#ifndef CONFIG_NO_RADIUS
-		/* TODO: update dynamic data based on changed configuration
-		 * items (e.g., open/close sockets, etc.) */
-		radius_client_flush(hapd_iface->bss[j]->radius, 0);
-#endif  /* CONFIG_NO_RADIUS */
-
-		hostapd_reload_bss(hapd_iface->bss[j]);
+		   hapd_iface->conf->bss[0]->iface);
+	for (j = 0; j < hapd_iface->num_bss; j++)
+		hostapd_set_security_params(hapd_iface->conf->bss[j]);
+	if (hostapd_config_check(hapd_iface->conf) < 0) {
+		wpa_printf(MSG_ERROR, "Updated configuration is invalid");
+		return -1;
 	}
+	hostapd_clear_old(hapd_iface);
+	for (j = 0; j < hapd_iface->num_bss; j++)
+		hostapd_reload_bss(hapd_iface->bss[j]);
+
 	return 0;
 }
 
@@ -1268,7 +1475,7 @@ hostapd_config_alloc(struct hapd_interfaces *interfaces, const char *ifname,
 		return NULL;
 	}
 
-	bss = conf->last_bss = conf->bss;
+	bss = conf->last_bss = conf->bss[0];
 
 	os_strlcpy(bss->iface, ifname, sizeof(bss->iface));
 	bss->ctrl_interface = os_strdup(ctrl_iface);
@@ -1303,8 +1510,7 @@ static struct hostapd_iface * hostapd_data_alloc(
 
 	for (i = 0; i < conf->num_bss; i++) {
 		hapd = hapd_iface->bss[i] =
-			hostapd_alloc_bss_data(hapd_iface, conf,
-					       &conf->bss[i]);
+			hostapd_alloc_bss_data(hapd_iface, conf, conf->bss[i]);
 		if (hapd == NULL)
 			return NULL;
 		hapd->msg_ctx = hapd;
@@ -1319,10 +1525,69 @@ static struct hostapd_iface * hostapd_data_alloc(
 int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 {
 	struct hostapd_config *conf = NULL;
-	struct hostapd_iface *hapd_iface = NULL;
+	struct hostapd_iface *hapd_iface = NULL, *new_iface = NULL;
+	struct hostapd_data *hapd;
 	char *ptr;
-	size_t i;
-	const char *conf_file = NULL;
+	size_t i, j;
+	const char *conf_file = NULL, *phy_name = NULL;
+
+	if (os_strncmp(buf, "bss_config=", 11) == 0) {
+		char *pos;
+		phy_name = buf + 11;
+		pos = os_strchr(phy_name, ':');
+		if (!pos)
+			return -1;
+		*pos++ = '\0';
+		conf_file = pos;
+		if (!os_strlen(conf_file))
+			return -1;
+
+		hapd_iface = hostapd_interface_init_bss(interfaces, phy_name,
+							conf_file, 0);
+		if (!hapd_iface)
+			return -1;
+		for (j = 0; j < interfaces->count; j++) {
+			if (interfaces->iface[j] == hapd_iface)
+				break;
+		}
+		if (j == interfaces->count) {
+			struct hostapd_iface **tmp;
+			tmp = os_realloc_array(interfaces->iface,
+					       interfaces->count + 1,
+					       sizeof(struct hostapd_iface *));
+			if (!tmp) {
+				hostapd_interface_deinit_free(hapd_iface);
+				return -1;
+			}
+			interfaces->iface = tmp;
+			interfaces->iface[interfaces->count++] = hapd_iface;
+			new_iface = hapd_iface;
+		}
+
+		if (new_iface) {
+			if (interfaces->driver_init(hapd_iface) ||
+			    hostapd_setup_interface(hapd_iface)) {
+				interfaces->count--;
+				goto fail;
+			}
+			hapd_iface->init_done = 1;
+		} else {
+			/* Assign new BSS with bss[0]'s driver info */
+			hapd = hapd_iface->bss[hapd_iface->num_bss - 1];
+			hapd->driver = hapd_iface->bss[0]->driver;
+			hapd->drv_priv = hapd_iface->bss[0]->drv_priv;
+			os_memcpy(hapd->own_addr, hapd_iface->bss[0]->own_addr,
+				  ETH_ALEN);
+
+			if (hostapd_setup_bss(hapd, -1)) {
+				hapd_iface->conf->num_bss--;
+				hapd_iface->num_bss--;
+				os_free(hapd);
+				return -1;
+			}
+		}
+		return 0;
+	}
 
 	ptr = os_strchr(buf, ' ');
 	if (ptr == NULL)
@@ -1333,7 +1598,7 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 		conf_file = ptr + 7;
 
 	for (i = 0; i < interfaces->count; i++) {
-		if (!os_strcmp(interfaces->iface[i]->conf->bss[0].iface,
+		if (!os_strcmp(interfaces->iface[i]->conf->bss[0]->iface,
 			       buf)) {
 			wpa_printf(MSG_INFO, "Cannot add interface - it "
 				   "already exists");
@@ -1351,8 +1616,8 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 	if (conf_file && interfaces->config_read_cb) {
 		conf = interfaces->config_read_cb(conf_file);
 		if (conf && conf->bss)
-			os_strlcpy(conf->bss->iface, buf,
-				   sizeof(conf->bss->iface));
+			os_strlcpy(conf->bss[0]->iface, buf,
+				   sizeof(conf->bss[0]->iface));
 	} else
 		conf = hostapd_config_alloc(interfaces, buf, ptr);
 	if (conf == NULL || conf->bss == NULL) {
@@ -1375,7 +1640,7 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 			   "interface", __func__);
 		goto fail;
 	}
-	wpa_printf(MSG_INFO, "Add interface '%s'", conf->bss[0].iface);
+	wpa_printf(MSG_INFO, "Add interface '%s'", conf->bss[0]->iface);
 
 	return 0;
 
@@ -1383,23 +1648,57 @@ fail:
 	if (conf)
 		hostapd_config_free(conf);
 	if (hapd_iface) {
-		os_free(hapd_iface->bss[interfaces->count]);
+		if (hapd_iface->bss) {
+			for (i = 0; i < hapd_iface->num_bss; i++)
+				os_free(hapd_iface->bss[i]);
+			os_free(hapd_iface->bss);
+		}
 		os_free(hapd_iface);
 	}
 	return -1;
 }
 
 
+static int hostapd_remove_bss(struct hostapd_iface *iface, unsigned int idx)
+{
+	struct hostapd_data *hapd;
+	size_t i;
+
+	if (idx > iface->num_bss || idx > iface->conf->num_bss)
+		return -1;
+	hapd = iface->bss[idx];
+	wpa_printf(MSG_INFO, "Remove BSS '%s'", hapd->conf->iface);
+
+	hostapd_free_stas(hapd);
+	hostapd_flush_old_stations(hapd, WLAN_REASON_DEAUTH_LEAVING);
+	hostapd_clear_wep(hapd);
+	hostapd_cleanup(hapd);
+	hostapd_config_free_bss(hapd->conf);
+	os_free(hapd);
+
+	iface->num_bss--;
+	for (i = idx; i < iface->num_bss; i++)
+		iface->bss[i] = iface->bss[i + 1];
+
+	iface->conf->num_bss--;
+	for (i = idx; i < iface->num_bss; i++)
+		iface->conf->bss[i] = iface->conf->bss[i + 1];
+
+	return 0;
+}
+
+
 int hostapd_remove_iface(struct hapd_interfaces *interfaces, char *buf)
 {
 	struct hostapd_iface *hapd_iface;
-	size_t i, k = 0;
+	size_t i, j, k = 0;
 
 	for (i = 0; i < interfaces->count; i++) {
 		hapd_iface = interfaces->iface[i];
 		if (hapd_iface == NULL)
 			return -1;
-		if (!os_strcmp(hapd_iface->conf->bss[0].iface, buf)) {
+		if (hapd_iface->conf->num_bss == 1 &&
+		    !os_strcmp(hapd_iface->conf->bss[0]->iface, buf)) {
 			wpa_printf(MSG_INFO, "Remove interface '%s'", buf);
 			hostapd_interface_deinit_free(hapd_iface);
 			k = i;
@@ -1411,11 +1710,14 @@ int hostapd_remove_iface(struct hapd_interfaces *interfaces, char *buf)
 			interfaces->count--;
 			return 0;
 		}
+
+		for (j = 0; j < hapd_iface->conf->num_bss; j++) {
+			if (!os_strcmp(hapd_iface->conf->bss[j]->iface, buf))
+				return hostapd_remove_bss(hapd_iface, j);
+		}
 	}
 	return -1;
 }
-
-#endif /* HOSTAPD */
 
 
 /**

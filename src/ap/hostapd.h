@@ -99,7 +99,6 @@ struct hostapd_data {
 	struct hostapd_iface *iface;
 	struct hostapd_config *iconf;
 	struct hostapd_bss_config *conf;
-	int interface_added; /* virtual interface added for this BSS */
 
 	u8 own_addr[ETH_ALEN];
 
@@ -151,6 +150,9 @@ struct hostapd_data {
 	struct radius_server_data *radius_srv;
 
 	int parameter_set_count;
+
+	/* DFS specific parameters */
+	int cac_started;
 
 	/* Time Advertisement */
 	u8 time_update_counter;
@@ -247,6 +249,8 @@ struct hostapd_iface {
 	void *owner;
 	char *config_fname;
 	struct hostapd_config *conf;
+	char phy[16]; /* Name of the PHY (radio) */
+	int init_done;
 
 	size_t num_bss;
 	struct hostapd_data **bss;
@@ -345,6 +349,11 @@ int hostapd_setup_interface(struct hostapd_iface *iface);
 int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err);
 void hostapd_interface_deinit(struct hostapd_iface *iface);
 void hostapd_interface_free(struct hostapd_iface *iface);
+struct hostapd_iface * hostapd_init(struct hapd_interfaces *interfaces,
+				    const char *config_file);
+struct hostapd_iface *
+hostapd_interface_init_bss(struct hapd_interfaces *interfaces, const char *phy,
+			   const char *config_fname, int debug);
 void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 			   int reassoc);
 void hostapd_interface_deinit_free(struct hostapd_iface *iface);

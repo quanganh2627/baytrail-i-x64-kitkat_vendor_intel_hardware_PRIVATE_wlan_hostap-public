@@ -147,66 +147,6 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
 #endif /* CONFIG_NO_HOSTAPD_LOGGER */
 
 
-/**
- * hostapd_init - Allocate and initialize per-interface data
- * @config_file: Path to the configuration file
- * Returns: Pointer to the allocated interface data or %NULL on failure
- *
- * This function is used to allocate main data structures for per-interface
- * data. The allocated data buffer will be freed by calling
- * hostapd_cleanup_iface().
- */
-static struct hostapd_iface * hostapd_init(const char *config_file)
-{
-	struct hostapd_iface *hapd_iface = NULL;
-	struct hostapd_config *conf = NULL;
-	struct hostapd_data *hapd;
-	size_t i;
-
-	hapd_iface = os_zalloc(sizeof(*hapd_iface));
-	if (hapd_iface == NULL)
-		goto fail;
-
-	hapd_iface->config_fname = os_strdup(config_file);
-	if (hapd_iface->config_fname == NULL)
-		goto fail;
-
-	conf = hostapd_config_read(hapd_iface->config_fname);
-	if (conf == NULL)
-		goto fail;
-	hapd_iface->conf = conf;
-
-	hapd_iface->num_bss = conf->num_bss;
-	hapd_iface->bss = os_calloc(conf->num_bss,
-				    sizeof(struct hostapd_data *));
-	if (hapd_iface->bss == NULL)
-		goto fail;
-
-	for (i = 0; i < conf->num_bss; i++) {
-		hapd = hapd_iface->bss[i] =
-			hostapd_alloc_bss_data(hapd_iface, conf,
-					       &conf->bss[i]);
-		if (hapd == NULL)
-			goto fail;
-		hapd->msg_ctx = hapd;
-	}
-
-	return hapd_iface;
-
-fail:
-	wpa_printf(MSG_ERROR, "Failed to set up interface with %s",
-		   config_file);
-	if (conf)
-		hostapd_config_free(conf);
-	if (hapd_iface) {
-		os_free(hapd_iface->config_fname);
-		os_free(hapd_iface->bss);
-		os_free(hapd_iface);
-	}
-	return NULL;
-}
-
-
 static int hostapd_driver_init(struct hostapd_iface *iface)
 {
 	struct wpa_init_params params;
@@ -282,6 +222,15 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		iface->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
 	}
 
+#ifdef CONFIG_INTERWORKING
+	if (hapd->driver->set_qos_map && conf->qos_map_set_len &&
+	    hapd->driver->set_qos_map(hapd->drv_priv, conf->qos_map_set,
+				      conf->qos_map_set_len)) {
+		wpa_printf(MSG_ERROR, "Failed to initialize QoS Map.");
+		return -1;
+	}
+#endif /* CONFIG_INTERWORKING */
+
 	return 0;
 }
 
@@ -294,7 +243,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces,
 	int k;
 
 	wpa_printf(MSG_ERROR, "Configuration file: %s", config_fname);
-	iface = hostapd_init(config_fname);
+	iface = hostapd_init(interfaces, config_fname);
 	if (!iface)
 		return NULL;
 	iface->interfaces = interfaces;
@@ -304,7 +253,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces,
 			iface->bss[0]->conf->logger_stdout_level--;
 	}
 
-	if (iface->conf->bss[0].iface[0] == '\0' &&
+	if (iface->conf->bss[0]->iface[0] == '\0' &&
 	    !hostapd_drv_none(iface->bss[0])) {
 		wpa_printf(MSG_ERROR, "Interface name not specified in %s",
 			   config_fname);
@@ -318,7 +267,23 @@ hostapd_interface_init(struct hapd_interfaces *interfaces,
 		return NULL;
 	}
 
+	iface->init_done = 1;
+
 	return iface;
+}
+
+
+static int hostapd_interface_init2(struct hostapd_iface *iface)
+{
+	if (iface->init_done)
+		return 0;
+
+	if (hostapd_driver_init(iface) ||
+	    hostapd_setup_interface(iface))
+		return -1;
+	iface->init_done = 1;
+
+	return 0;
 }
 
 
@@ -507,6 +472,10 @@ static void usage(void)
 #ifdef CONFIG_DEBUG_FILE
 		"   -f   log output to debug file instead of stdout\n"
 #endif /* CONFIG_DEBUG_FILE */
+#ifdef CONFIG_DEBUG_LINUX_TRACING
+		"   -T = record to Linux tracing in addition to logging\n"
+		"        (records all messages regardless of debug verbosity)\n"
+#endif /* CONFIG_DEBUG_LINUX_TRACING */
 		"   -t   include timestamps in some debug messages\n"
 		"   -v   show hostapd version\n");
 
@@ -517,8 +486,9 @@ static void usage(void)
 static const char * hostapd_msg_ifname_cb(void *ctx)
 {
 	struct hostapd_data *hapd = ctx;
-	if (hapd && hapd->iconf && hapd->iconf->bss)
-		return hapd->iconf->bss->iface;
+	if (hapd && hapd->iconf && hapd->iconf->bss &&
+	    hapd->iconf->num_bss > 0 && hapd->iconf->bss[0])
+		return hapd->iconf->bss[0]->iface;
 	return NULL;
 }
 
@@ -567,11 +537,16 @@ int main(int argc, char *argv[])
 {
 	struct hapd_interfaces interfaces;
 	int ret = 1;
-	size_t i;
+	size_t i, j;
 	int c, debug = 0, daemonize = 0;
 	char *pid_file = NULL;
 	const char *log_file = NULL;
 	const char *entropy_file = NULL;
+	char **bss_config = NULL, **tmp_bss;
+	size_t num_bss_configs = 0;
+#ifdef CONFIG_DEBUG_LINUX_TRACING
+	int enable_trace_dbg = 0;
+#endif /* CONFIG_DEBUG_LINUX_TRACING */
 
 	if (os_program_init())
 		return -1;
@@ -588,7 +563,7 @@ int main(int argc, char *argv[])
 	interfaces.global_ctrl_sock = -1;
 
 	for (;;) {
-		c = getopt(argc, argv, "Bde:f:hKP:tvg:G:");
+		c = getopt(argc, argv, "b:Bde:f:hKP:Ttvg:G:");
 		if (c < 0)
 			break;
 		switch (c) {
@@ -619,6 +594,11 @@ int main(int argc, char *argv[])
 		case 't':
 			wpa_debug_timestamp++;
 			break;
+#ifdef CONFIG_DEBUG_LINUX_TRACING
+		case 'T':
+			enable_trace_dbg = 1;
+			break;
+#endif /* CONFIG_DEBUG_LINUX_TRACING */
 		case 'v':
 			show_version();
 			exit(1);
@@ -631,23 +611,42 @@ int main(int argc, char *argv[])
 			if (hostapd_get_ctrl_iface_group(&interfaces, optarg))
 				return -1;
 			break;
+		case 'b':
+			tmp_bss = os_realloc_array(bss_config,
+						   num_bss_configs + 1,
+						   sizeof(char *));
+			if (tmp_bss == NULL)
+				goto out;
+			bss_config = tmp_bss;
+			bss_config[num_bss_configs++] = optarg;
+			break;
 		default:
 			usage();
 			break;
 		}
 	}
 
-	if (optind == argc && interfaces.global_iface_path == NULL)
+	if (optind == argc && interfaces.global_iface_path == NULL &&
+	    num_bss_configs == 0)
 		usage();
 
 	wpa_msg_register_ifname_cb(hostapd_msg_ifname_cb);
 
 	if (log_file)
 		wpa_debug_open_file(log_file);
+#ifdef CONFIG_DEBUG_LINUX_TRACING
+	if (enable_trace_dbg) {
+		int tret = wpa_debug_open_linux_tracing();
+		if (tret) {
+			wpa_printf(MSG_ERROR, "Failed to enable trace logging");
+			return -1;
+		}
+	}
+#endif /* CONFIG_DEBUG_LINUX_TRACING */
 
 	interfaces.count = argc - optind;
-	if (interfaces.count) {
-		interfaces.iface = os_calloc(interfaces.count,
+	if (interfaces.count || num_bss_configs) {
+		interfaces.iface = os_calloc(interfaces.count + num_bss_configs,
 					     sizeof(struct hostapd_iface *));
 		if (interfaces.iface == NULL) {
 			wpa_printf(MSG_ERROR, "malloc failed");
@@ -671,6 +670,46 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	for (i = 0; i < num_bss_configs; i++) {
+		struct hostapd_iface *iface;
+		char *fname;
+
+		wpa_printf(MSG_INFO, "BSS config: %s", bss_config[i]);
+		fname = os_strchr(bss_config[i], ':');
+		if (fname == NULL) {
+			wpa_printf(MSG_ERROR,
+				   "Invalid BSS config identifier '%s'",
+				   bss_config[i]);
+			goto out;
+		}
+		*fname++ = '\0';
+		iface = hostapd_interface_init_bss(&interfaces, bss_config[i],
+						   fname, debug);
+		if (iface == NULL)
+			goto out;
+		for (j = 0; j < interfaces.count; j++) {
+			if (interfaces.iface[j] == iface)
+				break;
+		}
+		if (j == interfaces.count) {
+			struct hostapd_iface **tmp;
+			tmp = os_realloc_array(interfaces.iface,
+					       interfaces.count + 1,
+					       sizeof(struct hostapd_iface *));
+			if (tmp == NULL) {
+				hostapd_interface_deinit_free(iface);
+				goto out;
+			}
+			interfaces.iface = tmp;
+			interfaces.iface[interfaces.count++] = iface;
+		}
+	}
+
+	for (i = 0; i < interfaces.count; i++) {
+		if (hostapd_interface_init2(interfaces.iface[i]) < 0)
+			goto out;
+	}
+
 	hostapd_global_ctrl_iface_init(&interfaces);
 
 	if (hostapd_global_run(&interfaces, daemonize, pid_file)) {
@@ -692,6 +731,9 @@ int main(int argc, char *argv[])
 
 	if (log_file)
 		wpa_debug_close_file();
+	wpa_debug_close_linux_tracing();
+
+	os_free(bss_config);
 
 	os_program_deinit();
 

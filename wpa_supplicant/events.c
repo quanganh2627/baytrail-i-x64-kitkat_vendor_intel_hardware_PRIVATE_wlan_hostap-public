@@ -274,7 +274,8 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 #ifdef PCSC_FUNCS
 	int aka = 0, sim = 0;
 
-	if (ssid->eap.pcsc == NULL || wpa_s->scard != NULL)
+	if (ssid->eap.pcsc == NULL || wpa_s->scard != NULL ||
+	    wpa_s->conf->external_sim)
 		return 0;
 
 	if (ssid->eap.eap_methods == NULL) {
@@ -1504,6 +1505,43 @@ void wnm_bss_keep_alive_deinit(struct wpa_supplicant *wpa_s)
 }
 
 
+#ifdef CONFIG_INTERWORKING
+
+static int wpas_qos_map_set(struct wpa_supplicant *wpa_s, const u8 *qos_map,
+			    size_t len)
+{
+	int res;
+
+	wpa_hexdump(MSG_DEBUG, "Interworking: QoS Map Set", qos_map, len);
+	res = wpa_drv_set_qos_map(wpa_s, qos_map, len);
+	if (res) {
+		wpa_printf(MSG_DEBUG, "Interworking: Failed to configure QoS Map Set to the driver");
+	}
+
+	return res;
+}
+
+
+static void interworking_process_assoc_resp(struct wpa_supplicant *wpa_s,
+					    const u8 *ies, size_t ies_len)
+{
+	struct ieee802_11_elems elems;
+
+	if (ies == NULL)
+		return;
+
+	if (ieee802_11_parse_elems(ies, ies_len, &elems, 1) == ParseFailed)
+		return;
+
+	if (elems.qos_map_set) {
+		wpas_qos_map_set(wpa_s, elems.qos_map_set,
+				 elems.qos_map_set_len);
+	}
+}
+
+#endif /* CONFIG_INTERWORKING */
+
+
 static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 					  union wpa_event_data *data)
 {
@@ -1528,6 +1566,10 @@ static int wpa_supplicant_event_associnfo(struct wpa_supplicant *wpa_s,
 		wnm_process_assoc_resp(wpa_s, data->assoc_info.resp_ies,
 				       data->assoc_info.resp_ies_len);
 #endif /* CONFIG_WNM */
+#ifdef CONFIG_INTERWORKING
+		interworking_process_assoc_resp(wpa_s, data->assoc_info.resp_ies,
+						data->assoc_info.resp_ies_len);
+#endif /* CONFIG_INTERWORKING */
 	}
 	if (data->assoc_info.beacon_ies)
 		wpa_hexdump(MSG_DEBUG, "beacon_ies",
@@ -2599,6 +2641,52 @@ static void wpas_event_deauth(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
+{
+	const char *rn, *rn2;
+	struct wpa_supplicant *ifs;
+
+	if (wpa_s->drv_priv == NULL)
+		return; /* Ignore event during drv initialization */
+
+	free_hw_features(wpa_s);
+	wpa_s->hw.modes = wpa_drv_get_hw_feature_data(
+		wpa_s, &wpa_s->hw.num_modes, &wpa_s->hw.flags);
+
+#ifdef CONFIG_P2P
+	wpas_p2p_update_channel_list(wpa_s);
+#endif /* CONFIG_P2P */
+
+	/*
+	 * Check other interfaces to see if they have the same radio-name. If
+	 * so, they get updated with this same hw mode info.
+	 */
+	if (!wpa_s->driver->get_radio_name)
+		return;
+
+	rn = wpa_s->driver->get_radio_name(wpa_s->drv_priv);
+	if (rn == NULL || rn[0] == '\0')
+		return;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Checking for other virtual interfaces "
+		"sharing same radio (%s) in event_channel_list_change", rn);
+
+	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
+		if (ifs == wpa_s || !ifs->driver->get_radio_name)
+			continue;
+
+		rn2 = ifs->driver->get_radio_name(ifs->drv_priv);
+		if (rn2 && os_strcmp(rn, rn2) == 0) {
+			wpa_printf(MSG_DEBUG, "%s: Updating hw mode",
+				   ifs->ifname);
+			free_hw_features(ifs);
+			ifs->hw.modes = wpa_drv_get_hw_feature_data(
+				ifs, &ifs->hw.num_modes, &ifs->hw.flags);
+		}
+	}
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
@@ -2918,6 +3006,19 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 		}
 #endif /* CONFIG_TDLS */
+#ifdef CONFIG_INTERWORKING
+		if (data->rx_action.category == WLAN_ACTION_QOS &&
+		    data->rx_action.len >= 1 &&
+		    data->rx_action.data[0] == QOS_QOS_MAP_CONFIG) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "Interworking: Received QoS Map Configure frame from "
+				MACSTR, MAC2STR(data->rx_action.sa));
+			if (os_memcmp(data->rx_action.sa, wpa_s->bssid, ETH_ALEN)
+			    == 0)
+				wpas_qos_map_set(wpa_s, data->rx_action.data + 1,
+						 data->rx_action.len - 1);
+			break;
+		}
+#endif /* CONFIG_INTERWORKING */
 #ifdef CONFIG_P2P
 		wpas_p2p_rx_action(wpa_s, data->rx_action.da,
 				   data->rx_action.sa,
@@ -3098,16 +3199,7 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		wpa_supplicant_set_state(wpa_s, WPA_INTERFACE_DISABLED);
 		break;
 	case EVENT_CHANNEL_LIST_CHANGED:
-		if (wpa_s->drv_priv == NULL)
-			break; /* Ignore event during drv initialization */
-
-		free_hw_features(wpa_s);
-		wpa_s->hw.modes = wpa_drv_get_hw_feature_data(
-			wpa_s, &wpa_s->hw.num_modes, &wpa_s->hw.flags);
-
-#ifdef CONFIG_P2P
-		wpas_p2p_update_channel_list(wpa_s);
-#endif /* CONFIG_P2P */
+		wpa_supplicant_update_channel_list(wpa_s);
 		break;
 	case EVENT_INTERFACE_UNAVAILABLE:
 #ifdef CONFIG_P2P

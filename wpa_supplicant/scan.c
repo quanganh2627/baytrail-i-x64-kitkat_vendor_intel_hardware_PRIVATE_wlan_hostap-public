@@ -21,6 +21,7 @@
 #include "hs20_supplicant.h"
 #include "notify.h"
 #include "bss.h"
+#include "gas_query.h"
 #include "scan.h"
 
 
@@ -599,7 +600,7 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 	}
 
 #ifdef CONFIG_P2P
-	if (wpas_p2p_in_progress(wpa_s) || wpas_wpa_is_in_progress(wpa_s)) {
+	if (wpas_p2p_in_progress(wpa_s) || wpas_wpa_is_in_progress(wpa_s, 0)) {
 		if (wpa_s->sta_scan_pending &&
 		    wpas_p2p_in_progress(wpa_s) == 2 &&
 		    wpa_s->global->p2p_cb_on_scan_complete) {
@@ -614,6 +615,14 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		}
 	}
 #endif /* CONFIG_P2P */
+
+#ifdef CONFIG_GAS
+	if (gas_query_in_progress(wpa_s->gas)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Delay scan while GAS query is in progress");
+		wpa_supplicant_req_scan(wpa_s, 1, 0);
+		return;
+	}
+#endif /* CONFIG_GAS */
 
 	if (wpa_s->conf->ap_scan == 2)
 		max_ssids = 1;
@@ -658,8 +667,9 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 #ifdef CONFIG_P2P
 	if ((wpa_s->p2p_in_provisioning || wpa_s->show_group_started) &&
 	    wpa_s->go_params) {
-		wpa_printf(MSG_DEBUG, "P2P: Use specific SSID for scan during "
-			   "P2P group formation");
+		wpa_printf(MSG_DEBUG, "P2P: Use specific SSID for scan during P2P group formation (p2p_in_provisioning=%d show_group_started=%d)",
+			   wpa_s->p2p_in_provisioning,
+			   wpa_s->show_group_started);
 		params.ssids[0].ssid = wpa_s->go_params->ssid;
 		params.ssids[0].ssid_len = wpa_s->go_params->ssid_len;
 		params.num_ssids = 1;
@@ -894,8 +904,10 @@ void wpa_supplicant_update_scan_int(struct wpa_supplicant *wpa_s, int sec)
 		new_int.usec = remaining.usec;
 	}
 
-	eloop_register_timeout(new_int.sec, new_int.usec, wpa_supplicant_scan,
-			       wpa_s, NULL);
+	if (cancelled) {
+		eloop_register_timeout(new_int.sec, new_int.usec,
+				       wpa_supplicant_scan, wpa_s, NULL);
+	}
 	wpa_s->scan_interval = sec;
 }
 

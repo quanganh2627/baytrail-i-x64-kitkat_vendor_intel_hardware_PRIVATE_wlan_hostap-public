@@ -431,10 +431,6 @@ void perror(const char *s);
 #define BIT(x) (1 << (x))
 #endif
 
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
-#endif
-
 /*
  * Definitions for sparse validation
  * (http://kernel.org/pub/linux/kernel/people/josh/sparse/)
@@ -507,6 +503,22 @@ static inline int is_broadcast_ether_addr(const u8 *a)
 #define broadcast_ether_addr (const u8 *) "\xff\xff\xff\xff\xff\xff"
 
 #include "wpa_debug.h"
+
+
+struct wpa_freq_range_list {
+	struct wpa_freq_range {
+		unsigned int min;
+		unsigned int max;
+	} *range;
+	unsigned int num;
+};
+
+int freq_range_list_parse(struct wpa_freq_range_list *res, const char *value);
+int freq_range_list_includes(const struct wpa_freq_range_list *list,
+			     unsigned int freq);
+char * freq_range_list_str(const struct wpa_freq_range_list *list);
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 
 /*

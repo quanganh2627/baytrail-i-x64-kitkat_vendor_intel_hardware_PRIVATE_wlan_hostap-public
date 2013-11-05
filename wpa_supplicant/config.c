@@ -1615,6 +1615,7 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(dh_file) },
 	{ STRe(subject_match) },
 	{ STRe(altsubject_match) },
+	{ STRe(domain_suffix_match) },
 	{ STRe(ca_cert2) },
 	{ STRe(ca_path2) },
 	{ STRe(client_cert2) },
@@ -1623,6 +1624,7 @@ static const struct parse_data ssid_fields[] = {
 	{ STRe(dh_file2) },
 	{ STRe(subject_match2) },
 	{ STRe(altsubject_match2) },
+	{ STRe(domain_suffix_match2) },
 	{ STRe(phase1) },
 	{ STRe(phase2) },
 	{ STRe(pcsc) },
@@ -1729,7 +1731,7 @@ static const struct parse_data ssid_fields[] = {
 #undef _FUNC
 #undef FUNC
 #undef FUNC_KEY
-#define NUM_SSID_FIELDS (sizeof(ssid_fields) / sizeof(ssid_fields[0]))
+#define NUM_SSID_FIELDS ARRAY_SIZE(ssid_fields)
 
 
 /**
@@ -1831,6 +1833,7 @@ static void eap_peer_config_free(struct eap_peer_config *eap)
 	os_free(eap->dh_file);
 	os_free(eap->subject_match);
 	os_free(eap->altsubject_match);
+	os_free(eap->domain_suffix_match);
 	os_free(eap->ca_cert2);
 	os_free(eap->ca_path2);
 	os_free(eap->client_cert2);
@@ -1839,6 +1842,7 @@ static void eap_peer_config_free(struct eap_peer_config *eap)
 	os_free(eap->dh_file2);
 	os_free(eap->subject_match2);
 	os_free(eap->altsubject_match2);
+	os_free(eap->domain_suffix_match2);
 	os_free(eap->phase1);
 	os_free(eap->phase2);
 	os_free(eap->pcsc);
@@ -1856,6 +1860,7 @@ static void eap_peer_config_free(struct eap_peer_config *eap)
 	os_free(eap->pending_req_otp);
 	os_free(eap->pac_file);
 	os_free(eap->new_password);
+	os_free(eap->external_sim_resp);
 }
 #endif /* IEEE8021X_EAPOL */
 
@@ -1895,6 +1900,8 @@ void wpa_config_free_ssid(struct wpa_ssid *ssid)
 
 void wpa_config_free_cred(struct wpa_cred *cred)
 {
+	size_t i;
+
 	os_free(cred->realm);
 	os_free(cred->username);
 	os_free(cred->password);
@@ -1904,7 +1911,10 @@ void wpa_config_free_cred(struct wpa_cred *cred)
 	os_free(cred->private_key_passwd);
 	os_free(cred->imsi);
 	os_free(cred->milenage);
+	for (i = 0; i < cred->num_domain; i++)
+		os_free(cred->domain[i]);
 	os_free(cred->domain);
+	os_free(cred->domain_suffix_match);
 	os_free(cred->eap_method);
 	os_free(cred->phase1);
 	os_free(cred->phase2);
@@ -1970,6 +1980,7 @@ void wpa_config_free(struct wpa_config *config)
 	os_free(config->p2p_ssid_postfix);
 	os_free(config->pssid);
 	os_free(config->p2p_pref_chan);
+	os_free(config->p2p_no_go_freq.range);
 	os_free(config->autoscan);
 	os_free(config->freq_list);
 	wpabuf_free(config->wps_nfc_dh_pubkey);
@@ -2476,9 +2487,23 @@ int wpa_config_set_cred(struct wpa_cred *cred, const char *var,
 		return 0;
 	}
 
+	if (os_strcmp(var, "domain_suffix_match") == 0) {
+		os_free(cred->domain_suffix_match);
+		cred->domain_suffix_match = val;
+		return 0;
+	}
+
 	if (os_strcmp(var, "domain") == 0) {
-		os_free(cred->domain);
-		cred->domain = val;
+		char **new_domain;
+		new_domain = os_realloc_array(cred->domain,
+					      cred->num_domain + 1,
+					      sizeof(char *));
+		if (new_domain == NULL) {
+			os_free(val);
+			return -1;
+		}
+		new_domain[cred->num_domain++] = val;
+		cred->domain = new_domain;
 		return 0;
 	}
 
@@ -2504,6 +2529,21 @@ int wpa_config_set_cred(struct wpa_cred *cred, const char *var,
 		}
 		os_memcpy(cred->roaming_consortium, val, len);
 		cred->roaming_consortium_len = len;
+		os_free(val);
+		return 0;
+	}
+
+	if (os_strcmp(var, "required_roaming_consortium") == 0) {
+		if (len < 3 || len > sizeof(cred->required_roaming_consortium))
+		{
+			wpa_printf(MSG_ERROR, "Line %d: invalid "
+				   "required_roaming_consortium length %d "
+				   "(3..15 expected)", line, (int) len);
+			os_free(val);
+			return -1;
+		}
+		os_memcpy(cred->required_roaming_consortium, val, len);
+		cred->required_roaming_consortium_len = len;
 		os_free(val);
 		return 0;
 	}
@@ -3099,6 +3139,26 @@ fail:
 	wpa_printf(MSG_ERROR, "Line %d: Invalid p2p_pref_chan list", line);
 	return -1;
 }
+
+
+static int wpa_config_process_p2p_no_go_freq(
+	const struct global_parse_data *data,
+	struct wpa_config *config, int line, const char *pos)
+{
+	int ret;
+
+	ret = freq_range_list_parse(&config->p2p_no_go_freq, pos);
+	if (ret < 0) {
+		wpa_printf(MSG_ERROR, "Line %d: Invalid p2p_no_go_freq", line);
+		return -1;
+	}
+
+	wpa_printf(MSG_DEBUG, "P2P: p2p_no_go_freq with %u items",
+		   config->p2p_no_go_freq.num);
+
+	return 0;
+}
+
 #endif /* CONFIG_P2P */
 
 
@@ -3216,6 +3276,7 @@ static const struct global_parse_data global_fields[] = {
 	{ STR(pkcs11_module_path), 0 },
 	{ STR(pcsc_reader), 0 },
 	{ STR(pcsc_pin), 0 },
+	{ INT(external_sim), 0 },
 	{ STR(driver_param), 0 },
 	{ INT(dot11RSNAConfigPMKLifetime), 0 },
 	{ INT(dot11RSNAConfigPMKReauthThreshold), 0 },
@@ -3249,6 +3310,8 @@ static const struct global_parse_data global_fields[] = {
 	{ INT_RANGE(p2p_intra_bss, 0, 1), CFG_CHANGED_P2P_INTRA_BSS },
 	{ INT(p2p_group_idle), 0 },
 	{ FUNC(p2p_pref_chan), CFG_CHANGED_P2P_PREF_CHAN },
+	{ FUNC(p2p_no_go_freq), CFG_CHANGED_P2P_PREF_CHAN },
+	{ INT_RANGE(p2p_add_cli_chan, 0, 1), 0 },
 	{ INT(p2p_go_ht40), 0 },
 	{ INT(p2p_go_vht), 0 },
 	{ INT_RANGE(p2p_disabled, 0, WPA_P2P_MGMT_CTRL_DISABLED), 0 },
@@ -3299,7 +3362,7 @@ static const struct global_parse_data global_fields[] = {
 #undef STR
 #undef STR_RANGE
 #undef BIN
-#define NUM_GLOBAL_FIELDS (sizeof(global_fields) / sizeof(global_fields[0]))
+#define NUM_GLOBAL_FIELDS ARRAY_SIZE(global_fields)
 
 
 int wpa_config_process_global(struct wpa_config *config, char *pos, int line)

@@ -1219,19 +1219,21 @@ void p2p_stop_find(struct p2p_data *p2p)
 
 static int p2p_prepare_channel_pref(struct p2p_data *p2p,
 				    unsigned int force_freq,
-				    unsigned int pref_freq)
+				    unsigned int pref_freq, int go)
 {
 	u8 op_class, op_channel;
 	unsigned int freq = force_freq ? force_freq : pref_freq;
 
-	p2p_dbg(p2p, "Prepare channel pref - force_freq=%u pref_freq=%u",
-		force_freq, pref_freq);
+	p2p_dbg(p2p, "Prepare channel pref - force_freq=%u pref_freq=%u go=%d",
+		force_freq, pref_freq, go);
 	if (p2p_freq_to_channel(freq, &op_class, &op_channel) < 0) {
 		p2p_dbg(p2p, "Unsupported frequency %u MHz", freq);
 		return -1;
 	}
 
-	if (!p2p_channels_includes(&p2p->cfg->channels, op_class, op_channel)) {
+	if (!p2p_channels_includes(&p2p->cfg->channels, op_class, op_channel) &&
+	    (go || !p2p_channels_includes(&p2p->cfg->cli_channels, op_class,
+					  op_channel))) {
 		p2p_dbg(p2p, "Frequency %u MHz (oper_class %u channel %u) not allowed for P2P",
 			freq, op_class, op_channel);
 		return -1;
@@ -1305,6 +1307,7 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
  * @dev: Selected peer device
  * @force_freq: Forced frequency in MHz or 0 if not forced
  * @pref_freq: Preferred frequency in MHz or 0 if no preference
+ * @go: Whether the local end will be forced to be GO
  * Returns: 0 on success, -1 on failure (channel not supported for P2P)
  *
  * This function is used to do initial operating channel selection for GO
@@ -1313,16 +1316,25 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
  * is available.
  */
 int p2p_prepare_channel(struct p2p_data *p2p, struct p2p_device *dev,
-			unsigned int force_freq, unsigned int pref_freq)
+			unsigned int force_freq, unsigned int pref_freq, int go)
 {
-	p2p_dbg(p2p, "Prepare channel - force_freq=%u pref_freq=%u",
-		force_freq, pref_freq);
+	p2p_dbg(p2p, "Prepare channel - force_freq=%u pref_freq=%u go=%d",
+		force_freq, pref_freq, go);
 	if (force_freq || pref_freq) {
-		if (p2p_prepare_channel_pref(p2p, force_freq, pref_freq) < 0)
+		if (p2p_prepare_channel_pref(p2p, force_freq, pref_freq, go) <
+		    0)
 			return -1;
 	} else {
 		p2p_prepare_channel_best(p2p);
 	}
+	p2p_channels_dump(p2p, "prepared channels", &p2p->channels);
+	if (go)
+		p2p_channels_remove_freqs(&p2p->channels, &p2p->no_go_freq);
+	else if (!force_freq)
+		p2p_channels_union(&p2p->channels, &p2p->cfg->cli_channels,
+				   &p2p->channels);
+	p2p_channels_dump(p2p, "after go/cli filter/add", &p2p->channels);
+
 	p2p_dbg(p2p, "Own preference for operation channel: Operating Class %u Channel %u%s",
 		p2p->op_reg_class, p2p->op_channel,
 		force_freq ? " (forced)" : "");
@@ -1378,7 +1390,8 @@ int p2p_connect(struct p2p_data *p2p, const u8 *peer_addr,
 		return -1;
 	}
 
-	if (p2p_prepare_channel(p2p, dev, force_freq, pref_freq) < 0)
+	if (p2p_prepare_channel(p2p, dev, force_freq, pref_freq,
+				go_intent == 15) < 0)
 		return -1;
 
 	if (dev->flags & P2P_DEV_GROUP_CLIENT_ONLY) {
@@ -1488,7 +1501,8 @@ int p2p_authorize(struct p2p_data *p2p, const u8 *peer_addr,
 		return -1;
 	}
 
-	if (p2p_prepare_channel(p2p, dev, force_freq, pref_freq) < 0)
+	if (p2p_prepare_channel(p2p, dev, force_freq, pref_freq, go_intent ==
+				15) < 0)
 		return -1;
 
 	p2p->ssid_set = 0;
@@ -1629,8 +1643,15 @@ void p2p_go_complete(struct p2p_data *p2p, struct p2p_device *peer)
 		}
 	}
 
+	p2p_channels_dump(p2p, "own channels", &p2p->channels);
+	p2p_channels_dump(p2p, "peer channels", &peer->channels);
 	p2p_channels_intersect(&p2p->channels, &peer->channels,
 			       &intersection);
+	if (go) {
+		p2p_channels_remove_freqs(&intersection, &p2p->no_go_freq);
+		p2p_channels_dump(p2p, "intersection after no-GO removal",
+				  &intersection);
+	}
 	freqs = 0;
 	for (i = 0; i < intersection.reg_classes; i++) {
 		struct p2p_reg_class *c = &intersection.reg_class[i];
@@ -1683,6 +1704,7 @@ static void p2p_rx_p2p_action(struct p2p_data *p2p, const u8 *sa,
 					   rx_freq);
 		break;
 	case P2P_INVITATION_RESP:
+		p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
 		p2p_process_invitation_resp(p2p, sa, data + 1, len - 1);
 		break;
 	case P2P_PROV_DISC_REQ:
@@ -1989,7 +2011,11 @@ struct wpabuf * p2p_build_probe_resp_ies(struct p2p_data *p2p)
 		pw_id = p2p_wps_method_pw_id(p2p->go_neg_peer->wps_method);
 	}
 
-	p2p_build_wps_ie(p2p, buf, pw_id, 1);
+	if (p2p_build_wps_ie(p2p, buf, pw_id, 1) < 0) {
+		p2p_dbg(p2p, "Failed to build WPS IE for Probe Response");
+		wpabuf_free(buf);
+		return NULL;
+	}
 
 #ifdef CONFIG_WIFI_DISPLAY
 	if (p2p->wfd_ie_probe_resp)
@@ -2447,6 +2473,10 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
 	p2p->go_timeout = 100;
 	p2p->client_timeout = 20;
 
+	p2p_dbg(p2p, "initialized");
+	p2p_channels_dump(p2p, "channels", &p2p->cfg->channels);
+	p2p_channels_dump(p2p, "cli_channels", &p2p->cfg->cli_channels);
+
 	return p2p;
 }
 
@@ -2483,6 +2513,7 @@ void p2p_deinit(struct p2p_data *p2p)
 	wpabuf_free(p2p->sd_resp);
 	os_free(p2p->after_scan_tx);
 	p2p_remove_wps_vendor_extensions(p2p);
+	os_free(p2p->no_go_freq.range);
 	os_free(p2p);
 }
 
@@ -2803,7 +2834,8 @@ static void p2p_retry_pd(struct p2p_data *p2p)
 			MAC2STR(dev->info.p2p_device_addr),
 			dev->req_config_methods);
 		p2p_send_prov_disc_req(p2p, dev,
-				       dev->flags & P2P_DEV_PD_FOR_JOIN, 0);
+				       dev->flags & P2P_DEV_PD_FOR_JOIN,
+				       p2p->pd_force_freq);
 		return;
 	}
 }
@@ -4112,6 +4144,31 @@ int p2p_set_pref_chan(struct p2p_data *p2p, unsigned int num_pref_chan,
 }
 
 
+int p2p_set_no_go_freq(struct p2p_data *p2p,
+		       const struct wpa_freq_range_list *list)
+{
+	struct wpa_freq_range *tmp;
+
+	if (list == NULL || list->num == 0) {
+		os_free(p2p->no_go_freq.range);
+		p2p->no_go_freq.range = NULL;
+		p2p->no_go_freq.num = 0;
+		return 0;
+	}
+
+	tmp = os_calloc(list->num, sizeof(struct wpa_freq_range));
+	if (tmp == NULL)
+		return -1;
+	os_memcpy(tmp, list->range, list->num * sizeof(struct wpa_freq_range));
+	os_free(p2p->no_go_freq.range);
+	p2p->no_go_freq.range = tmp;
+	p2p->no_go_freq.num = list->num;
+	p2p_dbg(p2p, "Updated no GO chan list");
+
+	return 0;
+}
+
+
 int p2p_get_interface_addr(struct p2p_data *p2p, const u8 *dev_addr,
 			   u8 *iface_addr)
 {
@@ -4174,10 +4231,16 @@ void p2p_set_intra_bss_dist(struct p2p_data *p2p, int enabled)
 }
 
 
-void p2p_update_channel_list(struct p2p_data *p2p, struct p2p_channels *chan)
+void p2p_update_channel_list(struct p2p_data *p2p,
+			     const struct p2p_channels *chan,
+			     const struct p2p_channels *cli_chan)
 {
 	p2p_dbg(p2p, "Update channel list");
 	os_memcpy(&p2p->cfg->channels, chan, sizeof(struct p2p_channels));
+	p2p_channels_dump(p2p, "channels", &p2p->cfg->channels);
+	os_memcpy(&p2p->cfg->cli_channels, cli_chan,
+		  sizeof(struct p2p_channels));
+	p2p_channels_dump(p2p, "cli_channels", &p2p->cfg->cli_channels);
 }
 
 

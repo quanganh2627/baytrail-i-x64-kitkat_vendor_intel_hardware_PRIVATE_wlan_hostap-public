@@ -639,6 +639,7 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 		"p2p_oper_reg_class", "p2p_oper_channel",
 		"p2p_go_intent", "p2p_ssid_postfix", "persistent_reconnect",
 		"p2p_intra_bss", "p2p_group_idle", "p2p_pref_chan",
+		"p2p_no_go_freq",
 		"p2p_go_ht40", "p2p_disabled", "p2p_no_group_iface",
 		"p2p_go_vht",
 		"p2p_ignore_shared_freq", "country", "bss_max_count",
@@ -650,9 +651,9 @@ static char ** wpa_cli_complete_set(const char *str, int pos)
 		"wps_nfc_dev_pw", "ext_password_backend",
 		"p2p_go_max_inactivity", "auto_interworking", "okc", "pmf",
 		"sae_groups", "dtim_period", "beacon_int", "ap_vendor_elements",
-		"ignore_old_scan_res", "freq_list"
+		"ignore_old_scan_res", "freq_list", "external_sim"
 	};
-	int i, num_fields = sizeof(fields) / sizeof(fields[0]);
+	int i, num_fields = ARRAY_SIZE(fields);
 
 	if (arg == 1) {
 		char **res = os_calloc(num_fields + 1, sizeof(char *));
@@ -1291,6 +1292,38 @@ static int wpa_cli_cmd_otp(struct wpa_ctrl *ctrl, int argc, char *argv[])
 		pos += ret;
 	}
 
+	return wpa_ctrl_command(ctrl, cmd);
+}
+
+
+static int wpa_cli_cmd_sim(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	char cmd[256], *pos, *end;
+	int i, ret;
+
+	if (argc < 2) {
+		printf("Invalid SIM command: needs two arguments "
+		       "(network id and SIM operation response)\n");
+		return -1;
+	}
+
+	end = cmd + sizeof(cmd);
+	pos = cmd;
+	ret = os_snprintf(pos, end - pos, WPA_CTRL_RSP "SIM-%s:%s",
+			  argv[0], argv[1]);
+	if (ret < 0 || ret >= end - pos) {
+		printf("Too long SIM command.\n");
+		return -1;
+	}
+	pos += ret;
+	for (i = 2; i < argc; i++) {
+		ret = os_snprintf(pos, end - pos, " %s", argv[i]);
+		if (ret < 0 || ret >= end - pos) {
+			printf("Too long SIM command.\n");
+			return -1;
+		}
+		pos += ret;
+	}
 	return wpa_ctrl_command(ctrl, cmd);
 }
 
@@ -2105,7 +2138,7 @@ static char ** wpa_cli_complete_p2p_set(const char *str, int pos)
 		"disc_int",
 		"per_sta_psk",
 	};
-	int i, num_fields = sizeof(fields) / sizeof(fields[0]);
+	int i, num_fields = ARRAY_SIZE(fields);
 
 	if (arg == 1) {
 		char **res = os_calloc(num_fields + 1, sizeof(char *));
@@ -2512,6 +2545,9 @@ static struct wpa_cli_cmd wpa_cli_commands[] = {
 	  cli_cmd_flag_sensitive,
 	  "<network id> <passphrase> = configure private key passphrase\n"
 	  "  for an SSID" },
+	{ "sim", wpa_cli_cmd_sim, NULL,
+	  cli_cmd_flag_sensitive,
+	  "<network id> <pin> = report SIM operation result" },
 	{ "bssid", wpa_cli_cmd_bssid, NULL,
 	  cli_cmd_flag_none,
 	  "<network id> <BSSID> = set preferred BSSID for an SSID" },
@@ -2943,7 +2979,7 @@ static char ** wpa_list_cmd_list(void)
 	int i, count;
 	struct cli_txt_entry *e;
 
-	count = sizeof(wpa_cli_commands) / sizeof(wpa_cli_commands[0]);
+	count = ARRAY_SIZE(wpa_cli_commands);
 	count += dl_list_len(&p2p_groups);
 	count += dl_list_len(&ifnames);
 	res = os_calloc(count + 1, sizeof(char *));

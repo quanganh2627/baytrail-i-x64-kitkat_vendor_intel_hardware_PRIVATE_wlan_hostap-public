@@ -782,6 +782,7 @@ OBJS += ../src/ap/wmm.o
 OBJS += ../src/ap/ap_list.o
 OBJS += ../src/ap/ieee802_11.o
 OBJS += ../src/ap/hw_features.o
+OBJS += ../src/ap/dfs.o
 CFLAGS += -DNEED_AP_MLME
 endif
 ifdef CONFIG_IEEE80211N
@@ -825,6 +826,10 @@ endif
 
 ifdef CONFIG_NO_STDOUT_DEBUG
 CFLAGS += -DCONFIG_NO_STDOUT_DEBUG
+endif
+
+ifdef CONFIG_DEBUG_LINUX_TRACING
+CFLAGS += -DCONFIG_DEBUG_LINUX_TRACING
 endif
 
 ifdef CONFIG_DEBUG_FILE
