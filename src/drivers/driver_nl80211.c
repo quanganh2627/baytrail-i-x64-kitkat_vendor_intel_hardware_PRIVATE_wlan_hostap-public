@@ -109,11 +109,15 @@ static void nl80211_handle_destroy(struct nl_handle *handle)
 #endif /* CONFIG_LIBNL20 */
 
 #ifdef ANDROID
+/* The libnl version used by AOSP does implement nl_socket_set_nonblocking.
+ * Provide here a local implementation. Once this implemented in AOSP this
+ * implementation should be removed.
+ */
 int nl_socket_set_nonblocking(struct nl_handle *sk)
 {
 	if (nl_socket_get_fd(sk) == -1)
 		return -1;
-	
+
 	if (fcntl(nl_socket_get_fd(sk), F_SETFL, O_NONBLOCK) < 0)
 		return -1;
 
