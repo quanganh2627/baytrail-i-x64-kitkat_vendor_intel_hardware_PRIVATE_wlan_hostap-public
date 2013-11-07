@@ -1173,6 +1173,47 @@ int ap_switch_channel(struct wpa_supplicant *wpa_s,
 	return hostapd_switch_channel(wpa_s->ap_iface->bss[0], settings);
 }
 
+int ap_ctrl_iface_chanswitch(struct wpa_supplicant *wpa_s,
+			     const char *pos)
+{
+	struct csa_settings settings;
+	char *end;
+
+	os_memset(&settings, 0, sizeof(settings));
+	settings.cs_count = strtol(pos, &end, 10);
+	if (pos == end) {
+		wpa_printf(MSG_ERROR, "chanswitch: invalid cs_count provided");
+		return -1;
+	}
+
+	settings.freq_params.freq = atoi(end);
+	if (settings.freq_params.freq == 0) {
+		wpa_printf(MSG_ERROR, "chanswitch: invalid freq provided");
+		return -1;
+	}
+
+#define SET_CSA_SETTING(str) \
+	do { \
+		const char *pos2 = os_strstr(pos, " " #str "="); \
+		if (pos2) { \
+			pos2 += sizeof(" " #str "=") - 1; \
+			settings.freq_params.str = atoi(pos2); \
+		} \
+	} while (0)
+
+	SET_CSA_SETTING(center_freq1);
+	SET_CSA_SETTING(center_freq2);
+	SET_CSA_SETTING(bandwidth);
+	SET_CSA_SETTING(sec_channel_offset);
+	settings.freq_params.ht_enabled = !!os_strstr(pos, " ht");
+	settings.freq_params.vht_enabled = !!os_strstr(pos, " vht");
+	settings.block_tx = !!os_strstr(pos, " blocktx");
+
+#undef SET_CSA_SETTING
+
+	return ap_switch_channel(wpa_s, &settings);
+}
+
 void wpas_ap_ch_switch(struct wpa_supplicant *wpa_s, int freq, int ht,
 		       int offset)
 {
