@@ -1110,6 +1110,45 @@ static int hostapd_ctrl_iface_radar(struct hostapd_data *hapd, char *cmd)
 }
 #endif /* CONFIG_TESTING_OPTIONS */
 
+static int hostapd_ctrl_iface_chan_switch(struct hostapd_data *hapd, char *pos)
+{
+	struct csa_settings settings;
+	char *end;
+
+	os_memset(&settings, 0, sizeof(settings));
+	settings.cs_count = strtol(pos, &end, 10);
+	if (pos == end) {
+		wpa_printf(MSG_ERROR, "chanswitch: invalid cs_count provided");
+		return -1;
+	}
+
+	settings.freq_params.freq = atoi(end);
+	if (settings.freq_params.freq == 0) {
+		wpa_printf(MSG_ERROR, "chanswitch: invalid freq provided");
+		return -1;
+	}
+
+#define SET_CSA_SETTING(str) \
+	do { \
+		const char *pos2 = os_strstr(pos, " " #str "="); \
+		if (pos2) { \
+			pos2 += sizeof(" " #str "=") - 1; \
+			settings.freq_params.str = atoi(pos2); \
+		} \
+	} while (0)
+
+	SET_CSA_SETTING(center_freq1);
+	SET_CSA_SETTING(center_freq2);
+	SET_CSA_SETTING(bandwidth);
+	SET_CSA_SETTING(sec_channel_offset);
+	settings.freq_params.ht_enabled = !!os_strstr(pos, " ht");
+	settings.freq_params.vht_enabled = !!os_strstr(pos, " vht");
+	settings.block_tx = !!os_strstr(pos, " blocktx");
+
+#undef SET_CSA_SETTING
+
+	return hostapd_switch_channel(hapd, &settings);
+}
 
 static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 				       void *sock_ctx)
@@ -1297,6 +1336,9 @@ static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 		if (hostapd_ctrl_iface_radar(hapd, buf + 6))
 			reply_len = -1;
 #endif /* CONFIG_TESTING_OPTIONS */
+	} else if (os_strncmp(buf, "CHAN_SWITCH ", 12) == 0) {
+		if (hostapd_ctrl_iface_chan_switch(hapd, buf + 12))
+			reply_len = -1;
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 		reply_len = 16;
