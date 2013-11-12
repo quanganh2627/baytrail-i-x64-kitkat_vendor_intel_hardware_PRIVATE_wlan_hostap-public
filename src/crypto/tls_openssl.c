@@ -62,7 +62,7 @@
 #else
 #include "keystore_get.h"
 #endif
-#endif
+#endif /* ANDROID */
 
 static int tls_openssl_ref_count = 0;
 
@@ -1527,7 +1527,6 @@ static BIO * BIO_from_keystore(const char *key)
 }
 #endif /* ANDROID */
 
-
 static int tls_connection_ca_cert(void *_ssl_ctx, struct tls_connection *conn,
 				  const char *ca_cert, const u8 *ca_cert_blob,
 				  size_t ca_cert_blob_len, const char *ca_path)
@@ -2226,26 +2225,6 @@ static int tls_connection_private_key(void *_ssl_ctx,
 
 		break;
 	}
-
-#ifdef ANDROID
-	if (!ok && private_key &&
-	    os_strncmp("keystore://", private_key, 11) == 0) {
-		BIO *bio = BIO_from_keystore(&private_key[11]);
-		EVP_PKEY *pkey = NULL;
-		if (bio) {
-			pkey = PEM_read_bio_PrivateKey(bio, NULL, NULL, NULL);
-			BIO_free(bio);
-		}
-		if (pkey) {
-			if (SSL_use_PrivateKey(conn->ssl, pkey) == 1) {
-				wpa_printf(MSG_DEBUG, "OpenSSL: Private key "
-					   "from keystore");
-				ok = 1;
-			}
-			EVP_PKEY_free(pkey);
-		}
-	}
-#endif /* ANDROID */
 
 	while (!ok && private_key) {
 #ifndef OPENSSL_NO_STDIO

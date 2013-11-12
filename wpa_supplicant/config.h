@@ -330,13 +330,14 @@ struct wpa_config {
 	int ap_scan;
 
 	/**
-	 * bgscan - Background scan and roaming parameters or %NULL if none.
+	 * bgscan - Background scan and roaming parameters or %NULL if none
+	 *
 	 * This is an optional set of parameters for background scanning and
-	 * roaming within a network (ESS),
-	 * for more detailed information see ssid block documentation.
+	 * roaming within a network (ESS). For more detailed information see
+	 * ssid block documentation.
 	 *
 	 * The variable defines default bgscan behavior for all BSS station
-	 * networks except for those which have their own bgscan configuration
+	 * networks except for those which have their own bgscan configuration.
 	 */
 	 char *bgscan;
 

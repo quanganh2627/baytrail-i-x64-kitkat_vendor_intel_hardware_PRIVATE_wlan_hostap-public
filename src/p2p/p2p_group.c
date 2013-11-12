@@ -984,6 +984,7 @@ int p2p_group_is_group_id_match(struct p2p_group *group, const u8 *group_id,
 			 group->cfg->ssid_len) == 0;
 }
 
+
 void p2p_group_force_beacon_update_ies(struct p2p_group *group)
 {
 	group->beacon_update = 1;

@@ -578,8 +578,12 @@ const char * wpa_supplicant_state_txt(enum wpa_states state)
 
 static void wpa_supplicant_start_bgscan(struct wpa_supplicant *wpa_s)
 {
-	const char *name = wpa_s->current_ssid->bgscan ?
-		wpa_s->current_ssid->bgscan : wpa_s->conf->bgscan;
+	const char *name;
+
+	if (wpa_s->current_ssid && wpa_s->current_ssid->bgscan)
+		name = wpa_s->current_ssid->bgscan;
+	else
+		name = wpa_s->conf->bgscan;
 	if (name == NULL)
 		return;
 	if (wpas_driver_bss_selection(wpa_s))
@@ -4053,6 +4057,33 @@ int wpas_wpa_is_in_progress(struct wpa_supplicant *wpa_s, int include_current)
 }
 
 
+void dump_freq_array(struct wpa_supplicant *wpa_s, const char *title,
+		     int *freq_array, unsigned int len)
+{
+	unsigned int i;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Shared frequencies (len=%u): %s",
+		len, title);
+	for (i = 0; i < len; i++)
+		wpa_dbg(wpa_s, MSG_DEBUG, "freq[%u]: %d", i, freq_array[i]);
+}
+
+void dump_freq_data(struct wpa_supplicant *wpa_s, const char *title,
+		    struct wpa_used_freq_data *freqs_data,
+		    unsigned int len)
+{
+	unsigned int i;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Shared frequencies (len=%u): %s",
+		len, title);
+	for (i = 0; i < len; i++) {
+		struct wpa_used_freq_data *cur = &freqs_data[i];
+		wpa_dbg(wpa_s, MSG_DEBUG, "freq[%u]: %d, used=%d, modes=0x%X",
+			i, cur->freq, cur->num, cur->mode_flags);
+	}
+}
+
+
 /*
  * Find the operating frequencies of any of the virtual interfaces that
  * are using the same radio as the current interface, and in addition, get
@@ -4069,6 +4100,8 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 	int freq;
 	unsigned int idx = 0, i;
 
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"Determining shared radio frequencies (max len %u)", len);
 	os_memset(freqs_data, 0, sizeof(struct wpa_used_freq_data) * len);
 
 	/* First add the frequency of the local interface */
@@ -4096,12 +4129,16 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 			freqs_data[idx].num = 1;
 			freqs_data[idx++].freq = freq;
 		}
+		dump_freq_data(wpa_s, "No get_radio_name", freqs_data, idx);
 		return idx;
 	}
 
 	rn = wpa_s->driver->get_radio_name(wpa_s->drv_priv);
-	if (rn == NULL || rn[0] == '\0')
+	if (rn == NULL || rn[0] == '\0') {
+		dump_freq_data(wpa_s, "get_radio_name failed",
+			       freqs_data, idx);
 		return idx;
+	}
 
 	for (ifs = wpa_s->global->ifaces; ifs && idx < len;
 	     ifs = ifs->next) {
@@ -4134,6 +4171,8 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 		freqs_data[i].mode_flags |= BIT(ifs->current_ssid->mode);
 		freqs_data[i].num++;
 	}
+
+	dump_freq_data(wpa_s, "completed iteration", freqs_data, idx);
 	return idx;
 }
 

@@ -1,6 +1,6 @@
 /*
  * hostapd - Driver operations
- * Copyright (c) 2009, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2009-2013, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -101,7 +101,7 @@ int hostapd_sta_assoc(struct hostapd_data *hapd, const u8 *addr,
 		      int reassoc, u16 status, const u8 *ie, size_t len);
 int hostapd_add_tspec(struct hostapd_data *hapd, const u8 *addr,
 		      u8 *tspec_ie, size_t tspec_ielen);
-int hostapd_start_dfs_cac(struct hostapd_data *hapd, int mode, int freq,
+int hostapd_start_dfs_cac(struct hostapd_iface *iface, int mode, int freq,
 			  int channel, int ht_enabled, int vht_enabled,
 			  int sec_channel_offset, int vht_oper_chwidth,
 			  int center_segment0, int center_segment1);
@@ -240,6 +240,21 @@ static inline int hostapd_drv_get_survey(struct hostapd_data *hapd,
 	if (!hapd->driver->get_survey)
 		return -1;
 	return hapd->driver->get_survey(hapd->drv_priv, freq);
+}
+
+static inline int hostapd_get_country(struct hostapd_data *hapd, char *alpha2)
+{
+	if (hapd->driver == NULL || hapd->driver->get_country == NULL)
+		return -1;
+	return hapd->driver->get_country(hapd->drv_priv, alpha2);
+}
+
+static inline const char * hostapd_drv_get_radio_name(struct hostapd_data *hapd)
+{
+	if (hapd->driver == NULL || hapd->drv_priv == NULL ||
+	    hapd->driver->get_radio_name == NULL)
+		return NULL;
+	return hapd->driver->get_radio_name(hapd->drv_priv);
 }
 
 #endif /* AP_DRV_OPS */

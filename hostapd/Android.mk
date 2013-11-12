@@ -49,13 +49,14 @@ ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
 endif
 
-# To allow non-ASCII characters in SSID
-L_CFLAGS += -DWPA_UNICODE_SSID
-
 INCLUDES = $(LOCAL_PATH)
 INCLUDES += $(LOCAL_PATH)/src
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += external/openssl/include
+INCLUDES += system/security/keystore/include
+# frameworks/base/cmds/keystore is the old location and can be dropped at some
+# point
+INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
 ifeq "$(PLATFORM_VERSION)" "4.3"
@@ -539,10 +540,6 @@ ifeq ($(CONFIG_TLS), gnutls)
 ifdef TLS_FUNCS
 OBJS += src/crypto/tls_gnutls.c
 LIBS += -lgnutls -lgpg-error
-ifdef CONFIG_GNUTLS_EXTRA
-L_CFLAGS += -DCONFIG_GNUTLS_EXTRA
-LIBS += -lgnutls-extra
-endif
 endif
 OBJS += src/crypto/crypto_gnutls.c
 HOBJS += src/crypto/crypto_gnutls.c
@@ -869,8 +866,18 @@ endif
 
 OBJS += src/drivers/driver_common.c
 
+ifdef CONFIG_ACS
+L_CFLAGS += -DCONFIG_ACS
+OBJS += src/ap/acs.c
+LIBS += -lm
+endif
+
 ifdef CONFIG_NO_STDOUT_DEBUG
 L_CFLAGS += -DCONFIG_NO_STDOUT_DEBUG
+endif
+
+ifdef CONFIG_DEBUG_LINUX_TRACING
+L_CFLAGS += -DCONFIG_DEBUG_LINUX_TRACING
 endif
 
 ifdef CONFIG_DEBUG_FILE
@@ -915,7 +922,7 @@ ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 ##Build as part of hostapd build now
 ##LOCAL_STATIC_LIBRARIES += $(BOARD_HOSTAPD_PRIVATE_LIB)
 endif
-LOCAL_SHARED_LIBRARIES := libc libcutils libcrypto libssl
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
 ifeq "$(PLATFORM_VERSION)" "4.3"
 LOCAL_SHARED_LIBRARIES += libkeystore_binder
 endif

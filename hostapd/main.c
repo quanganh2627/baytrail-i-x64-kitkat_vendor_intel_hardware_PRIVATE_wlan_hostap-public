@@ -114,7 +114,7 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
 
 	if ((conf_stdout & module) && level >= conf_stdout_level) {
 		wpa_debug_print_timestamp();
-		printf("%s\n", format);
+		wpa_printf(MSG_INFO, "%s", format);
 	}
 
 #ifndef CONFIG_NATIVE_WINDOWS
@@ -147,6 +147,9 @@ static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
 #endif /* CONFIG_NO_HOSTAPD_LOGGER */
 
 
+/**
+ * hostapd_driver_init - Preparate driver interface
+ */
 static int hostapd_driver_init(struct hostapd_iface *iface)
 {
 	struct wpa_init_params params;
@@ -222,19 +225,17 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		iface->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
 	}
 
-#ifdef CONFIG_INTERWORKING
-	if (hapd->driver->set_qos_map && conf->qos_map_set_len &&
-	    hapd->driver->set_qos_map(hapd->drv_priv, conf->qos_map_set,
-				      conf->qos_map_set_len)) {
-		wpa_printf(MSG_ERROR, "Failed to initialize QoS Map.");
-		return -1;
-	}
-#endif /* CONFIG_INTERWORKING */
-
 	return 0;
 }
 
 
+/**
+ * hostapd_interface_init - Read configuration file and init BSS data
+ *
+ * This function is used to parse configuration file for a full interface (one
+ * or more BSSes sharing the same radio) and allocate memory for the BSS
+ * interfaces. No actiual driver operations are started.
+ */
 static struct hostapd_iface *
 hostapd_interface_init(struct hapd_interfaces *interfaces,
 		       const char *config_fname, int debug)
@@ -261,29 +262,7 @@ hostapd_interface_init(struct hapd_interfaces *interfaces,
 		return NULL;
 	}
 
-	if (hostapd_driver_init(iface) ||
-	    hostapd_setup_interface(iface)) {
-		hostapd_interface_deinit_free(iface);
-		return NULL;
-	}
-
-	iface->init_done = 1;
-
 	return iface;
-}
-
-
-static int hostapd_interface_init2(struct hostapd_iface *iface)
-{
-	if (iface->init_done)
-		return 0;
-
-	if (hostapd_driver_init(iface) ||
-	    hostapd_setup_interface(iface))
-		return -1;
-	iface->init_done = 1;
-
-	return 0;
 }
 
 
@@ -659,7 +638,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	/* Initialize interfaces */
+	/* Allocate and parse configuration for full interface files */
 	for (i = 0; i < interfaces.count; i++) {
 		interfaces.iface[i] = hostapd_interface_init(&interfaces,
 							     argv[optind + i],
@@ -670,6 +649,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Allocate and parse configuration for per-BSS files */
 	for (i = 0; i < num_bss_configs; i++) {
 		struct hostapd_iface *iface;
 		char *fname;
@@ -705,8 +685,18 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/*
+	 * Enable configured interfaces. Depending on channel configuration,
+	 * this may complete full initialization before returning or use a
+	 * callback mechanism to complete setup in case of operations like HT
+	 * co-ex scans, ACS, or DFS are needed to determine channel parameters.
+	 * In such case, the interface will be enabled from eloop context within
+	 * hostapd_global_run().
+	 */
+	interfaces.terminate_on_error = interfaces.count;
 	for (i = 0; i < interfaces.count; i++) {
-		if (hostapd_interface_init2(interfaces.iface[i]) < 0)
+		if (hostapd_driver_init(interfaces.iface[i]) ||
+		    hostapd_setup_interface(interfaces.iface[i]))
 			goto out;
 	}
 

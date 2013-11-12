@@ -430,7 +430,8 @@ int hostapd_if_add(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 int hostapd_if_remove(struct hostapd_data *hapd, enum wpa_driver_if_type type,
 		      const char *ifname)
 {
-	if (hapd->driver == NULL || hapd->driver->if_remove == NULL)
+	if (hapd->driver == NULL || hapd->drv_priv == NULL ||
+	    hapd->driver->if_remove == NULL)
 		return -1;
 	return hapd->driver->if_remove(hapd->drv_priv, type, ifname);
 }
@@ -490,7 +491,8 @@ static int hostapd_set_freq_params(struct hostapd_freq_params *data, int mode,
 	case VHT_CHANWIDTH_USE_HT:
 		if (center_segment1)
 			return -1;
-		if (5000 + center_segment0 * 5 != data->center_freq1)
+		if (5000 + center_segment0 * 5 != data->center_freq1 &&
+		    2407 + center_segment0 * 5 != data->center_freq1)
 			return -1;
 		break;
 	case VHT_CHANWIDTH_80P80MHZ:
@@ -730,18 +732,20 @@ int hostapd_drv_send_action(struct hostapd_data *hapd, unsigned int freq,
 					 len, 0);
 }
 
-int hostapd_start_dfs_cac(struct hostapd_data *hapd, int mode, int freq,
+
+int hostapd_start_dfs_cac(struct hostapd_iface *iface, int mode, int freq,
 			  int channel, int ht_enabled, int vht_enabled,
 			  int sec_channel_offset, int vht_oper_chwidth,
 			  int center_segment0, int center_segment1)
 {
+	struct hostapd_data *hapd = iface->bss[0];
 	struct hostapd_freq_params data;
 	int res;
 
 	if (!hapd->driver || !hapd->driver->start_dfs_cac)
 		return 0;
 
-	if (!hapd->iface->conf->ieee80211h) {
+	if (!iface->conf->ieee80211h) {
 		wpa_printf(MSG_ERROR, "Can't start DFS CAC, DFS functionality "
 			   "is not enabled");
 		return -1;
@@ -751,12 +755,12 @@ int hostapd_start_dfs_cac(struct hostapd_data *hapd, int mode, int freq,
 				    vht_enabled, sec_channel_offset,
 				    vht_oper_chwidth, center_segment0,
 				    center_segment1,
-				    hapd->iface->current_mode->vht_capab))
+				    iface->current_mode->vht_capab))
 		return -1;
 
 	res = hapd->driver->start_dfs_cac(hapd->drv_priv, &data);
 	if (!res)
-		hapd->cac_started = 1;
+		iface->cac_started = 1;
 
 	return res;
 }

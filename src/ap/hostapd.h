@@ -1,6 +1,6 @@
 /*
  * hostapd / Initialization and configuration
- * Copyright (c) 2002-2009, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2013, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -45,6 +45,8 @@ struct hapd_interfaces {
 	gid_t ctrl_iface_group;
 	struct hostapd_iface **iface;
 	struct hostapd_dynamic_iface **dynamic_iface;
+
+	size_t terminate_on_error;
 };
 
 enum hostapd_chan_status {
@@ -99,6 +101,8 @@ struct hostapd_data {
 	struct hostapd_iface *iface;
 	struct hostapd_config *iconf;
 	struct hostapd_bss_config *conf;
+	int interface_added; /* virtual interface added for this BSS */
+	unsigned int started:1;
 
 	u8 own_addr[ETH_ALEN];
 
@@ -150,9 +154,6 @@ struct hostapd_data {
 	struct radius_server_data *radius_srv;
 
 	int parameter_set_count;
-
-	/* DFS specific parameters */
-	int cac_started;
 
 	/* Time Advertisement */
 	u8 time_update_counter;
@@ -250,10 +251,22 @@ struct hostapd_iface {
 	char *config_fname;
 	struct hostapd_config *conf;
 	char phy[16]; /* Name of the PHY (radio) */
-	int init_done;
+
+	enum hostapd_iface_state {
+		HAPD_IFACE_UNINITIALIZED,
+		HAPD_IFACE_DISABLED,
+		HAPD_IFACE_COUNTRY_UPDATE,
+		HAPD_IFACE_ACS,
+		HAPD_IFACE_HT_SCAN,
+		HAPD_IFACE_DFS,
+		HAPD_IFACE_ENABLED
+	} state;
 
 	size_t num_bss;
 	struct hostapd_data **bss;
+
+	unsigned int wait_channel_update:1;
+	unsigned int cac_started:1;
 
 	int num_ap; /* number of entries in ap_list */
 	struct ap_info *ap_list; /* AP info list head */
@@ -362,6 +375,9 @@ int hostapd_reload_iface(struct hostapd_iface *hapd_iface);
 int hostapd_disable_iface(struct hostapd_iface *hapd_iface);
 int hostapd_add_iface(struct hapd_interfaces *ifaces, char *buf);
 int hostapd_remove_iface(struct hapd_interfaces *ifaces, char *buf);
+void hostapd_channel_list_updated(struct hostapd_iface *iface);
+void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s);
+const char * hostapd_state_text(enum hostapd_iface_state s);
 
 /* utils.c */
 int hostapd_register_probereq_cb(struct hostapd_data *hapd,

@@ -58,9 +58,6 @@ ifeq ($(TARGET_ARCH),arm)
 L_CFLAGS += -mabi=aapcs-linux
 endif
 
-# To allow non-ASCII characters in SSID
-L_CFLAGS += -DWPA_UNICODE_SSID
-
 INCLUDES = $(LOCAL_PATH)
 INCLUDES += $(LOCAL_PATH)/src
 INCLUDES += $(LOCAL_PATH)/src/common
@@ -78,6 +75,10 @@ INCLUDES += $(LOCAL_PATH)/src/tls
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += $(LOCAL_PATH)/src/wps
 INCLUDES += external/openssl/include
+INCLUDES += system/security/keystore/include
+# frameworks/base/cmds/keystore is the old location and can be dropped at some
+# point
+INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
 ifeq "$(PLATFORM_VERSION)" "4.3"
@@ -784,15 +785,15 @@ OBJS += src/ap/beacon.c
 OBJS += src/ap/eap_user_db.c
 ifdef CONFIG_IEEE80211N
 OBJS += src/ap/ieee802_11_ht.c
+ifdef CONFIG_IEEE80211AC
+OBJS += src/ap/ieee802_11_vht.c
+endif
 endif
 ifdef CONFIG_WNM
 OBJS += src/ap/wnm_ap.c
 endif
 ifdef CONFIG_CTRL_IFACE
 OBJS += src/ap/ctrl_iface_ap.c
-endif
-ifdef CONFIG_WNM
-OBJS += src/ap/wnm_ap.c
 endif
 
 L_CFLAGS += -DEAP_SERVER -DEAP_SERVER_IDENTITY
@@ -802,6 +803,9 @@ OBJS += src/eap_server/eap_server_methods.c
 
 ifdef CONFIG_IEEE80211N
 L_CFLAGS += -DCONFIG_IEEE80211N
+ifdef CONFIG_IEEE80211AC
+L_CFLAGS += -DCONFIG_IEEE80211AC
+endif
 endif
 
 ifdef NEED_AP_MLME
@@ -1139,7 +1143,7 @@ endif
 ifdef NEED_AES_OMAC1
 NEED_AES_ENC=y
 ifdef CONFIG_OPENSSL_CMAC
-CFLAGS += -DCONFIG_OPENSSL_CMAC
+L_CFLAGS += -DCONFIG_OPENSSL_CMAC
 else
 AESOBJS += src/crypto/aes-omac1.c
 endif
@@ -1188,7 +1192,10 @@ SHA1OBJS += src/crypto/sha1-tlsprf.c
 endif
 endif
 
-MD5OBJS = src/crypto/md5.c
+MD5OBJS =
+ifndef CONFIG_FIPS
+MD5OBJS += src/crypto/md5.c
+endif
 ifdef NEED_MD5
 ifdef CONFIG_INTERNAL_MD5
 MD5OBJS += src/crypto/md5-internal.c
@@ -1442,7 +1449,7 @@ NEED_AUTOSCAN=y
 endif
 
 ifdef CONFIG_AUTOSCAN_PERIODIC
-CFLAGS += -DCONFIG_AUTOSCAN_PERIODIC
+L_CFLAGS += -DCONFIG_AUTOSCAN_PERIODIC
 OBJS += autoscan_periodic.c
 NEED_AUTOSCAN=y
 endif
@@ -1615,7 +1622,7 @@ LOCAL_MODULE = libwpa_client
 LOCAL_CFLAGS = $(L_CFLAGS)
 LOCAL_SRC_FILES = src/common/wpa_ctrl.c src/utils/os_$(CONFIG_OS).c
 LOCAL_C_INCLUDES = $(INCLUDES)
-LOCAL_SHARED_LIBRARIES := libcutils
+LOCAL_SHARED_LIBRARIES := libcutils liblog
 LOCAL_COPY_HEADERS_TO := libwpa_client
 LOCAL_COPY_HEADERS := src/common/wpa_ctrl.h
 include $(BUILD_SHARED_LIBRARY)

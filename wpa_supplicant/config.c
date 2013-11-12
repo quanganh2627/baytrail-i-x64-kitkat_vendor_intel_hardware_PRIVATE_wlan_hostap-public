@@ -1342,6 +1342,52 @@ static char * wpa_config_write_wep_key3(const struct parse_data *data,
 
 #ifdef CONFIG_P2P
 
+static int wpa_config_parse_go_p2p_dev_addr(const struct parse_data *data,
+					    struct wpa_ssid *ssid, int line,
+					    const char *value)
+{
+	if (value[0] == '\0' || os_strcmp(value, "\"\"") == 0 ||
+	    os_strcmp(value, "any") == 0) {
+		os_memset(ssid->go_p2p_dev_addr, 0, ETH_ALEN);
+		wpa_printf(MSG_MSGDUMP, "GO P2P Device Address any");
+		return 0;
+	}
+	if (hwaddr_aton(value, ssid->go_p2p_dev_addr)) {
+		wpa_printf(MSG_ERROR, "Line %d: Invalid GO P2P Device Address '%s'.",
+			   line, value);
+		return -1;
+	}
+	ssid->bssid_set = 1;
+	wpa_printf(MSG_MSGDUMP, "GO P2P Device Address " MACSTR,
+		   MAC2STR(ssid->go_p2p_dev_addr));
+	return 0;
+}
+
+
+#ifndef NO_CONFIG_WRITE
+static char * wpa_config_write_go_p2p_dev_addr(const struct parse_data *data,
+					       struct wpa_ssid *ssid)
+{
+	char *value;
+	int res;
+
+	if (is_zero_ether_addr(ssid->go_p2p_dev_addr))
+		return NULL;
+
+	value = os_malloc(20);
+	if (value == NULL)
+		return NULL;
+	res = os_snprintf(value, 20, MACSTR, MAC2STR(ssid->go_p2p_dev_addr));
+	if (res < 0 || res >= 20) {
+		os_free(value);
+		return NULL;
+	}
+	value[20 - 1] = '\0';
+	return value;
+}
+#endif /* NO_CONFIG_WRITE */
+
+
 static int wpa_config_parse_p2p_client_list(const struct parse_data *data,
 					    struct wpa_ssid *ssid, int line,
 					    const char *value)
@@ -1668,6 +1714,7 @@ static const struct parse_data ssid_fields[] = {
 	{ STR(bgscan) },
 	{ INT_RANGE(ignore_broadcast_ssid, 0, 2) },
 #ifdef CONFIG_P2P
+	{ FUNC(go_p2p_dev_addr) },
 	{ FUNC(p2p_client_list) },
 	{ FUNC(psk_list) },
 #endif /* CONFIG_P2P */
@@ -2890,22 +2937,25 @@ static int wpa_global_config_parse_str(const struct global_parse_data *data,
 
 	return 0;
 }
+
+
 static int wpa_config_process_bgscan(const struct global_parse_data *data,
 				     struct wpa_config *config, int line,
 				     const char *pos)
 {
 	size_t len;
-	char  *tmp;
+	char *tmp;
 
 	tmp = wpa_config_parse_string(pos, &len);
 	if (tmp == NULL) {
-		wpa_printf(MSG_ERROR, "Line %d: failed to parse %s.",
+		wpa_printf(MSG_ERROR, "Line %d: failed to parse %s",
 			   line, data->name);
 		return -1;
 	}
 
 	return wpa_global_config_parse_str(data, config, line, tmp);
 }
+
 
 static int wpa_global_config_parse_bin(const struct global_parse_data *data,
 				       struct wpa_config *config, int line,

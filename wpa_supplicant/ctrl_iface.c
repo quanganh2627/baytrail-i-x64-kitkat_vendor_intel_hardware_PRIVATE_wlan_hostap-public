@@ -58,6 +58,12 @@ static int pno_start(struct wpa_supplicant *wpa_s)
 	if (wpa_s->pno)
 		return 0;
 
+	if ((wpa_s->wpa_state > WPA_SCANNING) &&
+	    (wpa_s->wpa_state <= WPA_COMPLETED)) {
+		wpa_printf(MSG_ERROR, "PNO: In assoc process");
+		return -EAGAIN;
+	}
+
 	if (wpa_s->wpa_state == WPA_SCANNING) {
 		wpa_supplicant_cancel_sched_scan(wpa_s);
 		wpa_supplicant_cancel_scan(wpa_s);
@@ -181,7 +187,7 @@ static int set_disallow_aps(struct wpa_supplicant *wpa_s, char *val)
 	struct wpa_ssid *c;
 
 	/*
-	 * disallow_list ::= <ssid_spec> | <bssid_spec> | <disallow_list> | “”
+	 * disallow_list ::= <ssid_spec> | <bssid_spec> | <disallow_list> | ""
 	 * SSID_SPEC ::= ssid <SSID_HEX>
 	 * BSSID_SPEC ::= bssid <BSSID_HEX>
 	 */
