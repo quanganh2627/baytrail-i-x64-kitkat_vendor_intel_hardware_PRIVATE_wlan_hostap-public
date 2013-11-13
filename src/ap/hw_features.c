@@ -105,15 +105,15 @@ int hostapd_get_hw_features(struct hostapd_iface *iface)
 
 			/*
 			 * Disable all channels that are marked not to allow
-			 * IBSS operation or active scanning.
+			 * to initiate radiation (a.k.a passive scan and no
+			 * ibss).
 			 * Use radar channels only if the driver supports DFS.
 			 */
 			if ((feature->channels[j].flag &
 			     HOSTAPD_CHAN_RADAR) && dfs_enabled) {
 				dfs = 1;
 			} else if (feature->channels[j].flag &
-				   (HOSTAPD_CHAN_NO_IBSS |
-				    HOSTAPD_CHAN_PASSIVE_SCAN |
+				   (HOSTAPD_CHAN_NO_IR |
 				    HOSTAPD_CHAN_RADAR)) {
 				feature->channels[j].flag |=
 					HOSTAPD_CHAN_DISABLED;
@@ -818,12 +818,10 @@ static int hostapd_is_usable_chan(struct hostapd_iface *iface,
 			return 1;
 
 		wpa_printf(MSG_DEBUG,
-			   "%schannel [%i] (%i) is disabled for use in AP mode, flags: 0x%x%s%s%s",
+			   "%schannel [%i] (%i) is disabled for use in AP mode, flags: 0x%x%s%s",
 			   primary ? "" : "Configured HT40 secondary ",
 			   i, chan->chan, chan->flag,
-			   chan->flag & HOSTAPD_CHAN_NO_IBSS ? " NO-IBSS" : "",
-			   chan->flag & HOSTAPD_CHAN_PASSIVE_SCAN ?
-			   " PASSIVE-SCAN" : "",
+			   chan->flag & HOSTAPD_CHAN_NO_IR ? " NO-IR" : "",
 			   chan->flag & HOSTAPD_CHAN_RADAR ? " RADAR" : "");
 	}
 
