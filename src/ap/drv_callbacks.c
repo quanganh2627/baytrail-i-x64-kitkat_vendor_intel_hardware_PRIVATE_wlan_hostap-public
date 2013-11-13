@@ -412,6 +412,9 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		hapd->iface->cs_c_off_beacon = 0;
 		hapd->iface->cs_c_off_proberesp = 0;
 		hapd->iface->csa_in_progress = 0;
+
+		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED " freq: %d",
+			freq);
 	}
 #endif /* NEED_AP_MLME */
 }
