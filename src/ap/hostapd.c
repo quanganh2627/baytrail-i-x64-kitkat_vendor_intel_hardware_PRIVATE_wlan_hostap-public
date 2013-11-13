@@ -2138,7 +2138,7 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 
 	/* if a pointer to old_params is provided we save previous state */
 	if (old_params) {
-		old_params->channel = channel;
+		old_params->channel = conf->channel;
 		old_params->ht_enabled = conf->ieee80211n;
 		old_params->sec_channel_offset = conf->secondary_channel;
 	}
