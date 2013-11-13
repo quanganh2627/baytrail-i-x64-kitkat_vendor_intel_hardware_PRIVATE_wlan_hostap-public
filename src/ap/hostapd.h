@@ -393,6 +393,8 @@ int hostapd_fill_csa_settings(struct hostapd_iface *iface,
 void hostapd_free_csa_settings(struct csa_settings *settings);
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings);
+void hostapd_cleanup_cs_params(struct hostapd_data *hapd);
+
 
 /* utils.c */
 int hostapd_register_probereq_cb(struct hostapd_data *hapd,

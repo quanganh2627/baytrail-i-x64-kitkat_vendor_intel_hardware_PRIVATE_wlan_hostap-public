@@ -2200,6 +2200,17 @@ void hostapd_free_csa_settings(struct csa_settings *settings)
 	free_beacon_data(&settings->beacon_after);
 }
 
+
+void hostapd_cleanup_cs_params(struct hostapd_data *hapd)
+{
+	hapd->iface->cs_freq = 0;
+	hapd->iface->cs_count = 0;
+	hapd->iface->cs_block_tx = 0;
+	hapd->iface->cs_c_off_beacon = 0;
+	hapd->iface->cs_c_off_proberesp = 0;
+	hapd->iface->csa_in_progress = 0;
+}
+
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings)
 {
@@ -2213,6 +2224,9 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
 
 	if (!ret)
 		hapd->iface->csa_in_progress = 1;
+	else
+		/* if we failed, clean cs parameters */
+		hostapd_cleanup_cs_params(hapd);
 
 	return ret;
 }

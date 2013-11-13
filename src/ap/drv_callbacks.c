@@ -406,13 +406,7 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 
 	if (hapd->iface->csa_in_progress &&
 	    (freq == hapd->iface->cs_freq)) {
-		hapd->iface->cs_freq = 0;
-		hapd->iface->cs_count = 0;
-		hapd->iface->cs_block_tx = 0;
-		hapd->iface->cs_c_off_beacon = 0;
-		hapd->iface->cs_c_off_proberesp = 0;
-		hapd->iface->csa_in_progress = 0;
-
+		hostapd_cleanup_cs_params(hapd);
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED " freq: %d",
 			freq);
 	}
