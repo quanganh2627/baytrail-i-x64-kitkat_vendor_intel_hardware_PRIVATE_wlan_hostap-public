@@ -113,10 +113,16 @@ int hostapd_get_hw_features(struct hostapd_iface *iface)
 			     HOSTAPD_CHAN_RADAR) && dfs_enabled) {
 				dfs = 1;
 			} else if (feature->channels[j].flag &
-				   (HOSTAPD_CHAN_NO_IR |
-				    HOSTAPD_CHAN_RADAR)) {
+				   HOSTAPD_CHAN_RADAR) {
 				feature->channels[j].flag |=
 					HOSTAPD_CHAN_DISABLED;
+			} else if ((feature->channels[j].flag &
+				    HOSTAPD_CHAN_NO_IR) &&
+				   !(feature->channels[j].flag &
+				     (HOSTAPD_CHAN_INDOOR_ONLY |
+				      HOSTAPD_CHAN_GO_CONCURRENT))) {
+					feature->channels[j].flag |=
+						HOSTAPD_CHAN_DISABLED;
 			}
 
 			if (feature->channels[j].flag & HOSTAPD_CHAN_DISABLED)

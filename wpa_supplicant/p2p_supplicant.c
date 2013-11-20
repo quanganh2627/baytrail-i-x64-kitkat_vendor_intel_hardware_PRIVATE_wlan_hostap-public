@@ -3328,34 +3328,95 @@ static struct hostapd_hw_modes * get_mode(struct hostapd_hw_modes *modes,
 
 
 enum chan_allowed {
-	NOT_ALLOWED, NO_IR, ALLOWED
+	NOT_ALLOWED, NO_IR, INDOOR_ONLY, ALLOWED
 };
 
-static int has_channel(struct wpa_global *global,
-		       struct hostapd_hw_modes *mode, u8 chan, int *flags)
+static int wpas_p2p_get_unii(int freq)
 {
-	int i;
-	unsigned int freq;
+	/* UNII-1 */
+	if (freq >= 5150 && freq <= 5250)
+		return 0;
+
+	/* UNII-2A */
+	if (freq > 5250 && freq <= 5350)
+		return 1;
+
+	/* UNII-2B */
+	if (freq > 5350 && freq <= 5470)
+		return 2;
+
+	/* UNII-2C */
+	if (freq > 5470 && freq <= 5725)
+		return 3;
+
+	/* UNII-3 */
+	if (freq > 5725 && freq <= 5825)
+		return 4;
+
+	return -1;
+}
+
+static unsigned int wpas_p2p_same_unii(int freq1, int freq2)
+{
+	int r1 = wpas_p2p_get_unii(freq1);
+	int r2 = wpas_p2p_get_unii(freq2);
+
+	return (r1 != -1 && r1 == r2) ? 1 : 0;
+}
+
+static int has_channel(struct wpa_global *global,
+		       struct hostapd_hw_modes *mode,
+		       u8 chan, int *flags,
+		       struct wpa_used_freq_data *freqs,
+		       unsigned int num)
+{
+	int i, freq;
+	unsigned int j, is_shared_freq;
 
 	freq = (mode->mode == HOSTAPD_MODE_IEEE80211A ? 5000 : 2407) +
 		chan * 5;
 	if (wpas_p2p_disallowed_freq(global, freq))
 		return NOT_ALLOWED;
 
-	for (i = 0; i < mode->num_channels; i++) {
-		if (mode->channels[i].chan == chan) {
-			if (flags)
-				*flags = mode->channels[i].flag;
-			if (mode->channels[i].flag &
-			    (HOSTAPD_CHAN_DISABLED |
-			     HOSTAPD_CHAN_RADAR))
-				return NOT_ALLOWED;
-			if (mode->channels[i].flag & HOSTAPD_CHAN_NO_IR)
-				return NO_IR;
-			return ALLOWED;
+	/* Consider a frequency as usable for the GO_CONCURRENT relaxation iff
+	 * the frequency is used by a BSS in 2.4 or is in the same UNII band as
+	 * as a freq used by the BSS
+	 */
+	for (j = 0, is_shared_freq = 0; freqs && j < num; j++) {
+		if ((freqs[j].freq == freq ||
+		     wpas_p2p_same_unii(freqs[j].freq, freq)) &&
+		    freqs[j].flags & WPA_FREQ_USED_BY_BSS) {
+			is_shared_freq = 1;
+			break;
 		}
 	}
 
+	for (i = 0; i < mode->num_channels; i++) {
+		if (mode->channels[i].chan != chan)
+			continue;
+
+		if (flags)
+			*flags = mode->channels[i].flag;
+		if (mode->channels[i].flag & (HOSTAPD_CHAN_DISABLED |
+					      HOSTAPD_CHAN_RADAR))
+			return NOT_ALLOWED;
+
+		if (mode->channels[i].flag & HOSTAPD_CHAN_NO_IR) {
+			if (is_shared_freq && (mode->channels[i].flag &
+					       HOSTAPD_CHAN_GO_CONCURRENT))
+				return ALLOWED;
+			else if (mode->channels[i].flag &
+				 HOSTAPD_CHAN_INDOOR_ONLY)
+				return INDOOR_ONLY;
+			else
+				return NO_IR;
+		}
+
+		if (mode->channels[i].flag & HOSTAPD_CHAN_INDOOR_ONLY)
+			return INDOOR_ONLY;
+
+		return ALLOWED;
+	}
 	return NOT_ALLOWED;
 }
 
@@ -3420,7 +3481,9 @@ static int wpas_p2p_get_center_80mhz(struct wpa_supplicant *wpa_s,
 
 static enum chan_allowed wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
 					       struct hostapd_hw_modes *mode,
-					       u8 channel, u8 bw)
+					       u8 channel, u8 bw,
+					       struct wpa_used_freq_data *freqs,
+					       unsigned int num)
 {
 	u8 center_chan;
 	int i, flags;
@@ -3436,9 +3499,12 @@ static enum chan_allowed wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
 	for (i = 0; i < 4; i++) {
 		int adj_chan = center_chan - 6 + i * 4;
 
-		res = has_channel(wpa_s->global, mode, adj_chan, &flags);
+		res = has_channel(wpa_s->global, mode, adj_chan, &flags, freqs,
+				  num);
 		if (res == NOT_ALLOWED)
 			return NOT_ALLOWED;
+		if (res == INDOOR_ONLY)
+			return INDOOR_ONLY;
 		if (res == NO_IR)
 			ret = NO_IR;
 
@@ -3458,26 +3524,36 @@ static enum chan_allowed wpas_p2p_verify_80mhz(struct wpa_supplicant *wpa_s,
 
 static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 						 struct hostapd_hw_modes *mode,
-						 u8 channel, u8 bw)
+						 u8 channel, u8 bw,
+						 struct wpa_used_freq_data *freqs,
+						 unsigned int num)
 {
 	int flag;
 	enum chan_allowed res, res2;
 
-	res2 = res = has_channel(wpa_s->global, mode, channel, &flag);
+	res2 = res = has_channel(wpa_s->global, mode, channel, &flag, freqs,
+				 num);
 	if (bw == BW40MINUS) {
 		if (!(flag & HOSTAPD_CHAN_HT40MINUS))
 			return NOT_ALLOWED;
-		res2 = has_channel(wpa_s->global, mode, channel - 4, NULL);
+		res2 = has_channel(wpa_s->global, mode, channel - 4, NULL,
+				   freqs, num);
 	} else if (bw == BW40PLUS) {
 		if (!(flag & HOSTAPD_CHAN_HT40PLUS))
 			return NOT_ALLOWED;
-		res2 = has_channel(wpa_s->global, mode, channel + 4, NULL);
+		res2 = has_channel(wpa_s->global, mode, channel + 4, NULL,
+				   freqs, num);
 	} else if (bw == BW80) {
-		res2 = wpas_p2p_verify_80mhz(wpa_s, mode, channel, bw);
+		res2 = wpas_p2p_verify_80mhz(wpa_s, mode, channel, bw, freqs,
+					     num);
 	}
 
 	if (res == NOT_ALLOWED || res2 == NOT_ALLOWED)
 		return NOT_ALLOWED;
+
+	if (res == INDOOR_ONLY || res2 == INDOOR_ONLY)
+		return NOT_ALLOWED;
+
 	if (res == NO_IR || res2 == NO_IR)
 		return NO_IR;
 	return res;
@@ -3490,6 +3566,8 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 {
 	struct hostapd_hw_modes *mode;
 	int cla, op, cli_cla;
+	struct wpa_used_freq_data *freqs;
+	unsigned int num = wpa_s->num_multichan_concurrent;
 
 	if (wpa_s->hw.modes == NULL) {
 		wpa_printf(MSG_DEBUG, "P2P: Driver did not support fetching "
@@ -3497,6 +3575,10 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 			   "support");
 		return wpas_p2p_default_channels(wpa_s, chan, cli_chan);
 	}
+
+	/* Note: the flow can still be handled even if the allocation fails */
+	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
 
 	cla = cli_cla = 0;
 
@@ -3510,7 +3592,8 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 			continue;
 		for (ch = o->min_chan; ch <= o->max_chan; ch += o->inc) {
 			enum chan_allowed res;
-			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw);
+			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw,
+						      freqs, num);
 			if (res == ALLOWED) {
 				if (reg == NULL) {
 					wpa_printf(MSG_DEBUG, "P2P: Add operating class %u",
@@ -3547,6 +3630,7 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 	chan->reg_classes = cla;
 	cli_chan->reg_classes = cli_cla;
 
+	os_free(freqs);
 	return 0;
 }
 
@@ -3555,8 +3639,15 @@ int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
 			   struct hostapd_hw_modes *mode, u8 channel)
 {
 	int op;
-	enum chan_allowed ret;
+	enum chan_allowed res;
+	struct wpa_used_freq_data *freqs;
+	unsigned int num = wpa_s->num_multichan_concurrent;
+	int ret;
 
+	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
+
+	ret = 0;
 	for (op = 0; op_class[op].op_class; op++) {
 		struct p2p_oper_class_map *o = &op_class[op];
 		u8 ch;
@@ -3565,19 +3656,33 @@ int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
 			if (o->mode != HOSTAPD_MODE_IEEE80211A ||
 			    o->bw == BW20 || ch != channel)
 				continue;
-			ret = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw);
-			if (ret == ALLOWED)
-				return (o->bw == BW40MINUS) ? -1 : 1;
+			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw,
+						      freqs, num);
+			if (res == ALLOWED) {
+				ret = (o->bw == BW40MINUS) ? -1 : 1;
+				break;
+			}
 		}
 	}
-	return 0;
+	os_free(freqs);
+	return ret;
 }
 
 
 int wpas_p2p_get_vht80_center(struct wpa_supplicant *wpa_s,
 			      struct hostapd_hw_modes *mode, u8 channel)
 {
-	if (!wpas_p2p_verify_channel(wpa_s, mode, channel, BW80))
+	struct wpa_used_freq_data *freqs;
+	unsigned int num = wpa_s->num_multichan_concurrent;
+	int ret;
+
+	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
+
+	ret = wpas_p2p_verify_channel(wpa_s, mode, channel, BW80, freqs, num);
+	os_free(freqs);
+
+	if (!ret)
 		return 0;
 
 	return wpas_p2p_get_center_80mhz(wpa_s, mode, channel);
@@ -7060,6 +7165,21 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return;
+
+	/* Skip states that do not impact used frequencies */
+	switch (wpa_s->wpa_state) {
+	case WPA_SCANNING:
+	case WPA_AUTHENTICATING:
+	case WPA_ASSOCIATING:
+	case WPA_ASSOCIATED:
+	case WPA_4WAY_HANDSHAKE:
+	case WPA_GROUP_HANDSHAKE:
+		return;
+	default:
+		break;
+	}
+
+	wpas_p2p_update_channel_list(wpa_s);
 
 	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
 	if (!freqs)
