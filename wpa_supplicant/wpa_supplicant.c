@@ -4432,8 +4432,8 @@ void dump_freq_data(struct wpa_supplicant *wpa_s, const char *title,
 		len, title);
 	for (i = 0; i < len; i++) {
 		struct wpa_used_freq_data *cur = &freqs_data[i];
-		wpa_dbg(wpa_s, MSG_DEBUG, "freq[%u]: %d, used=%d, modes=0x%X",
-			i, cur->freq, cur->num, cur->mode_flags);
+		wpa_dbg(wpa_s, MSG_DEBUG, "freq[%u]: %d, flags=0x%X",
+			i, cur->freq, cur->flags);
 	}
 }
 
@@ -4466,9 +4466,15 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 			freqs_data[idx++].freq = wpa_s->assoc_freq;
 
 		if (idx) {
-			freqs_data[0].mode_flags =
-				BIT(wpa_s->current_ssid->mode);
-			freqs_data[0].num = 1;
+			if (wpa_s->current_ssid->mode == WPAS_MODE_INFRA) {
+				if (wpa_s->p2p_group_interface ==
+				    P2P_GROUP_INTERFACE_CLIENT)
+					freqs_data[0].flags =
+						WPA_FREQ_USED_BY_P2P_CLIENT;
+				else
+					freqs_data[0].flags =
+						WPA_FREQ_USED_BY_BSS;
+			}
 		}
 	}
 
@@ -4477,9 +4483,6 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 		freq = wpa_drv_shared_freq(wpa_s);
 		if (freq > 0 && idx < len &&
 		    (idx == 0 || freqs_data[0].freq != freq)) {
-			freqs_data[idx].mode_flags =
-				BIT(wpa_s->current_ssid->mode);
-			freqs_data[idx].num = 1;
 			freqs_data[idx++].freq = freq;
 		}
 		dump_freq_data(wpa_s, "No get_radio_name", freqs_data, idx);
@@ -4510,8 +4513,15 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 		if (i == idx)
 			freqs_data[idx++].freq = freq;
 
-		freqs_data[i].mode_flags |= BIT(ifs->current_ssid->mode);
-		freqs_data[i].num++;
+		if (ifs->current_ssid->mode == WPAS_MODE_INFRA) {
+			if (ifs->p2p_group_interface ==
+			    P2P_GROUP_INTERFACE_CLIENT)
+				freqs_data[0].flags |=
+					WPA_FREQ_USED_BY_P2P_CLIENT;
+			else
+				freqs_data[0].flags |=
+					WPA_FREQ_USED_BY_BSS;
+		}
 	}
 
 	dump_freq_data(wpa_s, "completed iteration", freqs_data, idx);

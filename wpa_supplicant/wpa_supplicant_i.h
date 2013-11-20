@@ -363,15 +363,12 @@ struct wpa_ssid_value {
 	size_t ssid_len;
 };
 
+#define WPA_FREQ_USED_BY_BSS BIT(0)
+#define WPA_FREQ_USED_BY_P2P_CLIENT BIT(1)
+
 struct wpa_used_freq_data {
-	/* The frequency that is used*/
 	int freq;
-
-	/* The number of interfaces using this freq */
-	unsigned int num;
-
-	/* The bit flag of the modes using this freq */
-	unsigned int mode_flags;
+	unsigned int flags;
 };
 
 /**

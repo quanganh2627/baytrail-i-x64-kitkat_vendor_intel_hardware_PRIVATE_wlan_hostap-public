@@ -2879,19 +2879,16 @@ static int wpas_p2p_pick_best_used_freq(struct wpa_supplicant *wpa_s,
 		return 0;
 
 	for (i = 1; i < num; i++) {
-		/* 1. BSS/P2P Client interfaces have higher preference.
-		 * 2. In case of a match in the interface types, a frequency
-		 * with more interfaces using it get higher priority */
-		if (!(freqs_data[c].mode_flags & BIT(WPAS_MODE_INFRA))) {
-			if (freqs_data[i].mode_flags & BIT(WPAS_MODE_INFRA) ||
-			    (freqs_data[c].num < freqs_data[i].num))
-				c = i;
-		} else if ((freqs_data[i].mode_flags & BIT(WPAS_MODE_INFRA)) ||
-			   (freqs_data[c].num < freqs_data[i].num)) {
-				c = i;
-		}
+		/* 1. BSS interfaces have higher preference.
+		 * 2. P2P Clients have higher preference.
+		 * 3. All others.
+		 */
+		if (freqs_data[i].flags & WPA_FREQ_USED_BY_BSS)
+			c = i;
+		else if ((freqs_data[i].flags & WPA_FREQ_USED_BY_P2P_CLIENT) &&
+			 !(freqs_data[c].flags & WPA_FREQ_USED_BY_BSS))
+			c = i;
 	}
-
 	return freqs_data[c].freq;
 }
 
