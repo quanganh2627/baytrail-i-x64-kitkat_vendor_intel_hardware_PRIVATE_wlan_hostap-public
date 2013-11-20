@@ -45,7 +45,7 @@
 
 #ifndef CONFIG_NO_SCAN_PROCESSING
 static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
-					      int new_scan);
+					      int new_scan, int own_request);
 #endif /* CONFIG_NO_SCAN_PROCESSING */
 
 
@@ -158,7 +158,9 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 		return;
 
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
+#ifdef ANDROID
 	wpa_s->conf->ap_scan = DEFAULT_AP_SCAN;
+#endif
 	bssid_changed = !is_zero_ether_addr(wpa_s->bssid);
 	os_memset(wpa_s->bssid, 0, ETH_ALEN);
 	os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
@@ -313,8 +315,7 @@ int wpa_supplicant_scard_init(struct wpa_supplicant *wpa_s,
 	wpa_dbg(wpa_s, MSG_DEBUG, "Selected network is configured to use SIM "
 		"(sim=%d aka=%d) - initialize PCSC", sim, aka);
 
-	wpa_s->scard = scard_init((!sim && aka) ? SCARD_USIM_ONLY :
-				  SCARD_TRY_BOTH, NULL);
+	wpa_s->scard = scard_init(NULL);
 	if (wpa_s->scard == NULL) {
 		wpa_msg(wpa_s, MSG_WARNING, "Failed to initialize SIM "
 			"(pcsc-lite)");
@@ -1302,12 +1303,12 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 
 	wpa_scan_results_free(scan_res);
 
-	return wpas_select_network_from_last_scan(wpa_s, 1);
+	return wpas_select_network_from_last_scan(wpa_s, 1, own_request);
 }
 
 
 static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
-					      int new_scan)
+					      int new_scan, int own_request)
 {
 	struct wpa_bss *selected;
 	struct wpa_ssid *ssid = NULL;
@@ -1342,7 +1343,12 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 			wpa_supplicant_associate(wpa_s, NULL, ssid);
 			if (new_scan)
 				wpa_supplicant_rsn_preauth_scan_results(wpa_s);
-		} else {
+		} else if (own_request) {
+			/*
+			 * No SSID found. If SCAN results are as a result of
+			 * own scan request and not due to a scan request on
+			 * another shared interface, try another scan.
+			 */
 			int timeout_sec = wpa_s->last_scan_optimized ?
 						0 : wpa_s->scan_interval;
 			int timeout_usec = 0;
@@ -1447,7 +1453,7 @@ int wpa_supplicant_fast_associate(struct wpa_supplicant *wpa_s)
 		return -1;
 	}
 
-	return wpas_select_network_from_last_scan(wpa_s, 0);
+	return wpas_select_network_from_last_scan(wpa_s, 0, 1);
 #endif /* CONFIG_NO_SCAN_PROCESSING */
 }
 
@@ -2128,7 +2134,11 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 			fast_reconnect_ssid = wpa_s->current_ssid;
 #endif /* CONFIG_NO_SCAN_PROCESSING */
 		} else if (wpa_s->wpa_state >= WPA_ASSOCIATING)
+#ifdef ANDROID
 			wpa_supplicant_req_scan(wpa_s, 0, 500000);
+#else
+			wpa_supplicant_req_scan(wpa_s, 0, 100000);
+#endif
 		else
 			wpa_dbg(wpa_s, MSG_DEBUG, "Do not request new "
 				"immediate scan");
@@ -2823,11 +2833,52 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)
 			sme_event_assoc_reject(wpa_s, data);
 		else {
+#ifdef ANDROID_P2P
+			if(!wpa_s->current_ssid) {
+				wpa_printf(MSG_ERROR, "current_ssid == NULL");
+				break;
+			}
+			/* If assoc reject is reported by the driver, then avoid
+			 * waiting for  the authentication timeout. Cancel the
+			 * authentication timeout and retry the assoc.
+			 */
+			if(wpa_s->current_ssid->assoc_retry++ < 10) {
+				wpa_printf(MSG_ERROR, "Retrying assoc: %d ",
+								wpa_s->current_ssid->assoc_retry);
+
+				wpa_supplicant_cancel_auth_timeout(wpa_s);
+
+				/* Clear the states */
+				wpa_sm_notify_disassoc(wpa_s->wpa);
+				wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+
+				wpa_s->reassociate = 1;
+				if (wpa_s->p2p_group_interface == NOT_P2P_GROUP_INTERFACE) {
+					const u8 *bl_bssid = data->assoc_reject.bssid;
+					if (!bl_bssid || is_zero_ether_addr(bl_bssid))
+						bl_bssid = wpa_s->pending_bssid;
+					wpa_blacklist_add(wpa_s, bl_bssid);
+					wpa_supplicant_req_scan(wpa_s, 0, 0);
+				} else {
+					wpa_supplicant_req_scan(wpa_s, 1, 0);
+				}
+			} else if (wpa_s->p2p_group_interface != NOT_P2P_GROUP_INTERFACE) {
+				/* If we ASSOC_REJECT's hits threshold, disable the 
+			 	 * network
+			 	 */
+				wpa_printf(MSG_ERROR, "Assoc retry threshold reached. "
+				"Disabling the network");
+				wpa_s->current_ssid->assoc_retry = 0;
+				wpa_supplicant_disable_network(wpa_s, wpa_s->current_ssid);
+				wpas_p2p_group_remove(wpa_s, wpa_s->ifname);
+			}
+#else
 			const u8 *bssid = data->assoc_reject.bssid;
 			if (bssid == NULL || is_zero_ether_addr(bssid))
 				bssid = wpa_s->pending_bssid;
 			wpas_connection_failed(wpa_s, bssid, 1);
 			wpa_supplicant_mark_disassoc(wpa_s);
+#endif /* ANDROID_P2P */
 		}
 		break;
 	case EVENT_AUTH_TIMED_OUT:

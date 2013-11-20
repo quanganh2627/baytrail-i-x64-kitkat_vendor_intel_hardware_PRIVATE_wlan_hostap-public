@@ -117,7 +117,7 @@ static int pno_start(struct wpa_supplicant *wpa_s)
 	interval = wpa_s->conf->sched_scan_interval ?
 		wpa_s->conf->sched_scan_interval : 10;
 
-	ret = wpa_drv_sched_scan(wpa_s, &params, interval * 1000);
+	ret = wpa_supplicant_start_sched_scan(wpa_s, &params, interval);
 	os_free(params.filter_ssids);
 	if (ret == 0)
 		wpa_s->pno = 1;
@@ -131,7 +131,7 @@ static int pno_stop(struct wpa_supplicant *wpa_s)
 
 	if (wpa_s->pno) {
 		wpa_s->pno = 0;
-		ret = wpa_drv_stop_sched_scan(wpa_s);
+		ret = wpa_supplicant_stop_sched_scan(wpa_s);
 	}
 
 	if (wpa_s->wpa_state == WPA_SCANNING)
@@ -571,6 +571,10 @@ static int wpa_supplicant_ctrl_iface_tdls_setup(
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE TDLS_SETUP " MACSTR,
 		   MAC2STR(peer));
 
+	if ((wpa_s->conf->tdls_external_control) &&
+	    wpa_tdls_is_external_setup(wpa_s->wpa))
+		return wpa_drv_tdls_oper(wpa_s, TDLS_SETUP, peer);
+
 	wpa_tdls_remove(wpa_s->wpa, peer);
 
 	if (wpa_tdls_is_external_setup(wpa_s->wpa))
@@ -596,6 +600,10 @@ static int wpa_supplicant_ctrl_iface_tdls_teardown(
 
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE TDLS_TEARDOWN " MACSTR,
 		   MAC2STR(peer));
+
+	if ((wpa_s->conf->tdls_external_control) &&
+	    wpa_tdls_is_external_setup(wpa_s->wpa))
+		return wpa_drv_tdls_oper(wpa_s, TDLS_TEARDOWN, peer);
 
 	if (wpa_tdls_is_external_setup(wpa_s->wpa))
 		ret = wpa_tdls_teardown_link(
@@ -649,7 +657,7 @@ static int wpa_supplicant_ctrl_iface_wps_pbc(struct wpa_supplicant *wpa_s,
 	u8 *_p2p_dev_addr = NULL;
 #endif /* CONFIG_AP */
 
-	if (cmd == NULL || os_strcmp(cmd, "any") == 0 || cmd[0] == '\0') {
+	if (cmd == NULL || os_strcmp(cmd, "any") == 0) {
 		_bssid = NULL;
 #ifdef CONFIG_P2P
 	} else if (os_strncmp(cmd, "p2p_dev_addr=", 13) == 0) {
@@ -1626,36 +1634,18 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 		     "id=%d state=%d BSSID=" MACSTR " SSID=%s",
 		     wpa_s->current_ssid ? wpa_s->current_ssid->id : -1,
 		     wpa_s->wpa_state,
-		     MAC2STR(wpa_s->pending_bssid),
-		     wpa_s->current_ssid && wpa_s->current_ssid->ssid ?
-		     wpa_ssid_txt(wpa_s->current_ssid->ssid,
-		     wpa_s->current_ssid->ssid_len) : "");
-	if (wpa_s->wpa_state == WPA_COMPLETED) {
-		struct wpa_ssid *ssid = wpa_s->current_ssid;
-		wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_CONNECTED "- connection to "
-			MACSTR " completed %s [id=%d id_str=%s]",
-			MAC2STR(wpa_s->bssid), "(auth)",
-			ssid ? ssid->id : -1,
-			ssid && ssid->id_str ? ssid->id_str : "");
-	}
-#endif /* ANDROID */
-
-#ifdef ANDROID
-	wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_STATE_CHANGE
-		     "id=%d state=%d BSSID=" MACSTR " SSID=%s",
-		     wpa_s->current_ssid ? wpa_s->current_ssid->id : -1,
-		     wpa_s->wpa_state,
 		     MAC2STR(wpa_s->bssid),
 		     wpa_s->current_ssid && wpa_s->current_ssid->ssid ?
 		     wpa_ssid_txt(wpa_s->current_ssid->ssid,
-		     wpa_s->current_ssid->ssid_len) : "");
+				  wpa_s->current_ssid->ssid_len) : "");
 	if (wpa_s->wpa_state == WPA_COMPLETED) {
 		struct wpa_ssid *ssid = wpa_s->current_ssid;
-		wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_CONNECTED "- connection to "
-			MACSTR " completed %s [id=%d id_str=%s]",
-			MAC2STR(wpa_s->bssid), "(auth)",
-			ssid ? ssid->id : -1,
-			ssid && ssid->id_str ? ssid->id_str : "");
+		wpa_msg_ctrl(wpa_s, MSG_INFO, WPA_EVENT_CONNECTED
+			     "- connection to " MACSTR
+			     " completed %s [id=%d id_str=%s]",
+			     MAC2STR(wpa_s->bssid), "(auth)",
+			     ssid ? ssid->id : -1,
+			     ssid && ssid->id_str ? ssid->id_str : "");
 	}
 #endif /* ANDROID */
 
@@ -5179,6 +5169,31 @@ static int wpa_supplicant_pktcnt_poll(struct wpa_supplicant *wpa_s, char *buf,
 }
 
 
+#ifdef ANDROID
+static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
+				     char *buf, size_t buflen)
+{
+	int ret;
+
+	ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
+	if (ret == 0) {
+		if (os_strncasecmp(cmd, "COUNTRY", 7) == 0) {
+			struct p2p_data *p2p = wpa_s->global->p2p;
+			if (p2p) {
+				char country[3];
+				country[0] = cmd[8];
+				country[1] = cmd[9];
+				country[2] = 0x04;
+				p2p_set_country(p2p, country);
+			}
+		}
+		ret = sprintf(buf, "%s\n", "OK");
+	}
+	return ret;
+}
+#endif
+
+
 static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 {
 	wpa_dbg(wpa_s, MSG_DEBUG, "Flush all wpa_supplicant state");
@@ -5239,44 +5254,6 @@ static void wpas_ctrl_eapol_response(void *eloop_ctx, void *timeout_ctx)
 	eapol_sm_notify_ctrl_response(wpa_s->eapol);
 }
 
-
-#ifdef ANDROID
-static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
-				     char *buf, size_t buflen)
-{
-	int ret;
-
-	if (os_strcasecmp(cmd, "BGSCAN-START") == 0)
-		ret = pno_start(wpa_s);
-	else if (os_strcasecmp(cmd, "BGSCAN-STOP") == 0)
-		ret = pno_stop(wpa_s);
-	else if (os_strncasecmp(cmd, "SETBAND ", 8) == 0) {
-		int val = atoi(cmd + 8);
-		/*
-		 * Use driver_cmd for drivers that support it, but ignore the
-		 * return value since scan requests from wpa_supplicant will
-		 * provide a list of channels to scan for based on the SETBAND
-		 * setting.
-		 */
-		wpa_printf(MSG_DEBUG, "SETBAND: %d", val);
-		wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
-		ret = 0;
-		if (val == 0)
-			wpa_s->setband = WPA_SETBAND_AUTO;
-		else if (val == 1)
-			wpa_s->setband = WPA_SETBAND_5G;
-		else if (val == 2)
-			wpa_s->setband = WPA_SETBAND_2G;
-		else
-			ret = -1;
-	} else
-		ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
-	if (ret == 0)
-		ret = sprintf(buf, "%s\n", "OK");
-	return ret;
-}
-
-#endif /* ANDROID */
 
 char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 					 char *buf, size_t *resp_len)
@@ -5529,11 +5506,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		if (p2p_ctrl_serv_disc_resp(wpa_s, buf + 19) < 0)
 			reply_len = -1;
 	} else if (os_strcmp(buf, "P2P_SERVICE_UPDATE") == 0) {
-#ifdef ANDROID_P2P
-		wpas_p2p_sd_service_update(wpa_s, SRV_UPDATE);
-#else
 		wpas_p2p_sd_service_update(wpa_s);
-#endif
 	} else if (os_strncmp(buf, "P2P_SERV_DISC_EXTERNAL ", 23) == 0) {
 		if (p2p_ctrl_serv_disc_external(wpa_s, buf + 23) < 0)
 			reply_len = -1;
@@ -5830,12 +5803,6 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 #endif /* CONFIG_WNM */
 	} else if (os_strcmp(buf, "FLUSH") == 0) {
 		wpa_supplicant_ctrl_iface_flush(wpa_s);
-
-#ifdef ANDROID
-	} else if (os_strncmp(buf, "DRIVER ", 7) == 0) {
-		reply_len = wpa_supplicant_driver_cmd(wpa_s, buf + 7, reply,
-						      reply_size);
-#endif /* ANDROID */
 	} else {
 		os_memcpy(reply, "UNKNOWN COMMAND\n", 16);
 		reply_len = 16;
@@ -6052,6 +6019,10 @@ static char * wpas_global_ctrl_iface_redir_p2p(struct wpa_global *global,
 {
 #ifdef CONFIG_P2P
 	static const char * cmd[] = {
+#ifdef ANDROID_P2P
+		"LIST_NETWORKS",
+		"SAVE_CONFIG",
+#endif
 		"P2P_FIND",
 		"P2P_STOP_FIND",
 		"P2P_LISTEN",
@@ -6066,6 +6037,12 @@ static char * wpas_global_ctrl_iface_redir_p2p(struct wpa_global *global,
 		NULL
 	};
 	static const char * prefix[] = {
+#ifdef ANDROID_P2P
+		"DRIVER ",
+		"GET_NETWORK ",
+		"REMOVE_NETWORK ",
+		"SET ",
+#endif
 		"P2P_FIND ",
 		"P2P_CONNECT ",
 		"P2P_LISTEN ",

@@ -845,6 +845,7 @@ static int hostapd_cli_cmd_get(struct wpa_ctrl *ctrl, int argc, char *argv[])
 	return wpa_ctrl_command(ctrl, cmd);
 }
 
+
 static int hostapd_cli_cmd_chan_switch(struct wpa_ctrl *ctrl,
 				       int argc, char *argv[])
 {
@@ -855,11 +856,11 @@ static int hostapd_cli_cmd_chan_switch(struct wpa_ctrl *ctrl,
 	int total;
 
 	if (argc < 2) {
-		printf("Invalid chan_switch command: needs at least two"
-		       " arguments (count and freq)\n"
-		       "usage: <cs_count> <freq> [sec_channel_offset=]"
-		       " [center_freq1=] [center_freq2=] [bandwidth=]"
-		       " [blocktx] [ht|vht]\n");
+		printf("Invalid chan_switch command: needs at least two "
+		       "arguments (count and freq)\n"
+		       "usage: <cs_count> <freq> [sec_channel_offset=] "
+		       "[center_freq1=] [center_freq2=] [bandwidth=] "
+		       "[blocktx] [ht|vht]\n");
 		return -1;
 	}
 
@@ -882,6 +883,7 @@ static int hostapd_cli_cmd_chan_switch(struct wpa_ctrl *ctrl,
 	}
 	return wpa_ctrl_command(ctrl, cmd);
 }
+
 
 struct hostapd_cli_cmd {
 	const char *cmd;

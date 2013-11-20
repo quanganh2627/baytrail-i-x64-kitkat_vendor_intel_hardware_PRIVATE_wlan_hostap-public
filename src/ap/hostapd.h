@@ -385,16 +385,12 @@ int hostapd_reload_iface(struct hostapd_iface *hapd_iface);
 int hostapd_disable_iface(struct hostapd_iface *hapd_iface);
 int hostapd_add_iface(struct hapd_interfaces *ifaces, char *buf);
 int hostapd_remove_iface(struct hapd_interfaces *ifaces, char *buf);
-void hostapd_channel_list_updated(struct hostapd_iface *iface);
+void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator);
 void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s);
 const char * hostapd_state_text(enum hostapd_iface_state s);
-int hostapd_fill_csa_settings(struct hostapd_iface *iface,
-			      struct csa_settings *settings);
-void hostapd_free_csa_settings(struct csa_settings *settings);
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings);
 void hostapd_cleanup_cs_params(struct hostapd_data *hapd);
-
 
 /* utils.c */
 int hostapd_register_probereq_cb(struct hostapd_data *hapd,

@@ -120,12 +120,12 @@ static void p2p_expire_peers(struct p2p_data *p2p)
 
 		p2p_dbg(p2p, "Expiring old peer entry " MACSTR,
 			MAC2STR(dev->info.p2p_device_addr));
+
 #ifdef ANDROID_P2P
-		/* SD_FAIR_POLICY: Update the current sd_dev_list pointer to
-		 * next device */
-		if (&dev->list == p2p->sd_dev_list)
+		/* SD_FAIR_POLICY: Update the current sd_dev_list pointer to next device */
+		if(&dev->list == p2p->sd_dev_list)
 			p2p->sd_dev_list = dev->list.next;
-#endif /* ANDROID_P2P */
+#endif
 		dl_list_del(&dev->list);
 		p2p_device_free(p2p, dev);
 	}
@@ -434,11 +434,10 @@ static struct p2p_device * p2p_create_device(struct p2p_data *p2p,
 	if (count + 1 > p2p->cfg->max_peers && oldest) {
 		p2p_dbg(p2p, "Remove oldest peer entry to make room for a new peer");
 #ifdef ANDROID_P2P
-		/* SD_FAIR_POLICY: Update the current sd_dev_list pointer to
-		 * next device */
-		if (&oldest->list == p2p->sd_dev_list)
+		/* SD_FAIR_POLICY: Update the current sd_dev_list pointer to next device */
+		if(&oldest->list == p2p->sd_dev_list)
 			p2p->sd_dev_list = oldest->list.next;
-#endif /* ANDROID_P2P */
+#endif
 		dl_list_del(&oldest->list);
 		p2p_device_free(p2p, oldest);
 	}
@@ -981,16 +980,14 @@ static int p2p_run_after_scan(struct p2p_data *p2p)
 		os_free(p2p->after_scan_tx);
 		p2p->after_scan_tx = NULL;
 #ifdef ANDROID_P2P
-		/* For SD frames, there is a scenario, where we can receive a
-		 * SD request frame during p2p_scan. At that moment, we will
-		 * send the SD response from this context. After sending the SD
-		 * response, we need to continue p2p_find. But if we return 1
-		 * from here, p2p_find is going to be stopped.
+		/* For SD frames, there is a scenario, where we can receive a SD request frame during p2p_scan.
+		 * At that moment, we will send the SD response from this context. After sending the SD response,
+		 * we need to continue p2p_find. But if we return 1 from here, p2p_find is going to be stopped.
 		 */
 		return 0;
-#else /* ANDROID_P2P */
+#else
 		return 1;
-#endif /* ANDROID_P2P */
+#endif
 	}
 
 	op = p2p->start_after_scan;
@@ -1122,18 +1119,6 @@ int p2p_find(struct p2p_data *p2p, unsigned int timeout,
 	return res;
 }
 
-#ifdef ANDROID_P2P
-int p2p_search_pending(struct p2p_data *p2p)
-{
-	if(p2p == NULL)
-		return 0;
-
-	if(p2p->state == P2P_SEARCH_WHEN_READY)
-		return 1;
-
-	return 0;
-}
-#endif
 
 int p2p_other_scan_completed(struct p2p_data *p2p)
 {
@@ -1259,6 +1244,9 @@ static int p2p_prepare_channel_pref(struct p2p_data *p2p,
 static void p2p_prepare_channel_best(struct p2p_data *p2p)
 {
 	u8 op_class, op_channel;
+	const int op_classes_5ghz[] = { 115, 124, 0 };
+	const int op_classes_ht40[] = { 116, 117, 126, 127, 0 };
+	const int op_classes_vht[] = { 128, 0 };
 
 	p2p_dbg(p2p, "Prepare channel best");
 
@@ -1290,6 +1278,21 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 		p2p_dbg(p2p, "Select first pref_chan entry as operating channel preference");
 		p2p->op_reg_class = p2p->cfg->pref_chan[0].op_class;
 		p2p->op_channel = p2p->cfg->pref_chan[0].chan;
+	} else if (p2p_channel_select(&p2p->cfg->channels, op_classes_vht,
+				      &p2p->op_reg_class, &p2p->op_channel) ==
+		   0) {
+		p2p_dbg(p2p, "Select possible VHT channel (op_class %u channel %u) as operating channel preference",
+			p2p->op_reg_class, p2p->op_channel);
+	} else if (p2p_channel_select(&p2p->cfg->channels, op_classes_ht40,
+				      &p2p->op_reg_class, &p2p->op_channel) ==
+		   0) {
+		p2p_dbg(p2p, "Select possible HT40 channel (op_class %u channel %u) as operating channel preference",
+			p2p->op_reg_class, p2p->op_channel);
+	} else if (p2p_channel_select(&p2p->cfg->channels, op_classes_5ghz,
+				      &p2p->op_reg_class, &p2p->op_channel) ==
+		   0) {
+		p2p_dbg(p2p, "Select possible 5 GHz channel (op_class %u channel %u) as operating channel preference",
+			p2p->op_reg_class, p2p->op_channel);
 	} else {
 		p2p_dbg(p2p, "Select pre-configured channel as operating channel preference");
 		p2p->op_reg_class = p2p->cfg->op_reg_class;
@@ -2446,12 +2449,15 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
 	}
 
 #ifdef ANDROID_P2P
-	/* SD_FAIR_POLICY: Initializing the SD current serviced pointer to NULL
+	/* 100ms listen time is too less to receive the response frames in some scenarios
+	 * increasing min listen time to 200ms.
 	 */
+	p2p->min_disc_int = 2;
+	/* SD_FAIR_POLICY: Initializing the SD current serviced pointer to NULL */
 	p2p->sd_dev_list = NULL;
-#else /* ANDROID_P2P */
+#else
 	p2p->min_disc_int = 1;
-#endif /* ANDROID_P2P */
+#endif
 	p2p->max_disc_int = 3;
 	p2p->max_disc_tu = -1;
 
@@ -2543,10 +2549,9 @@ void p2p_flush(struct p2p_data *p2p)
 		p2p_device_free(p2p, dev);
 	}
 #ifdef ANDROID_P2P
-	/* SD_FAIR_POLICY: Initializing the SD current serviced pointer to NULL
-	 */
+	/* SD_FAIR_POLICY: Initializing the SD current serviced pointer to NULL */
 	p2p->sd_dev_list = NULL;
-#endif /* ANDROID_P2P */
+#endif
 	p2p_free_sd_queries(p2p);
 	os_free(p2p->after_scan_tx);
 	p2p->after_scan_tx = NULL;
@@ -2725,26 +2730,24 @@ void p2p_continue_find(struct p2p_data *p2p)
 {
 	struct p2p_device *dev;
 #ifdef ANDROID_P2P
-	int skip = 1;
-#endif /* ANDROID_P2P */
+	int skip=1;
+#endif
 	p2p_set_state(p2p, P2P_SEARCH);
 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
 #ifdef ANDROID_P2P
-		/* SD_FAIR_POLICY: We need to give chance to all devices in the
-		 * device list. There may be a scenario, where a particular
-		 * peer device have not registered any query response. When we
-		 * send a SD request to such device, no response will be
-		 * received. And if we continue to get probe responses from
-		 * that device, and if that device happens to be on top in our
-		 * device list, we will always continue to send SD requests
-		 * always to that peer only. We will not be able to send SD
-		 * requests to other devices in that case. This implementation
-		 * keeps track of last serviced peer device. And then takes the
-		 * next one from the device list, in the next iteration.
+		/* SD_FAIR_POLICY: We need to give chance to all devices in the device list
+		 * There may be a scenario, where a particular peer device have
+		 * not registered any query response. When we send a SD request to such device,
+		 * no response will be received. And if we continue to get probe responses from that device, 
+		 * and if that device happens to be on top in our device list, 
+		 * we will always continue to send SD requests always to that peer only. 
+		 * We will not be able to send SD requests to other devices in that case. 
+		 * This implementation keeps track of last serviced peer device. 
+		 * And then takes the next one from the device list, in the next iteration.
 		 */
 		if (p2p->sd_dev_list && p2p->sd_dev_list != &p2p->devices) {
-			if (skip) {
-				if ((&dev->list == p2p->sd_dev_list)) {
+			if(skip) {
+				if ((&dev->list == p2p->sd_dev_list) ) {
 					skip = 0;
 					if (dev->list.next == &p2p->devices)
 						p2p->sd_dev_list = NULL;
@@ -2753,12 +2756,10 @@ void p2p_continue_find(struct p2p_data *p2p)
 			}
 		}
 		p2p->sd_dev_list = &dev->list;
-		wpa_printf(MSG_DEBUG, "P2P: ### Servicing %p dev->flags 0x%x "
-			   "SD schedule %s devaddr " MACSTR,
-			   p2p->sd_dev_list, dev->flags,
-			   dev->flags & P2P_DEV_SD_SCHEDULE ? "TRUE": "FALSE",
-			   MAC2STR(dev->info.p2p_device_addr));
-#endif /* ANDROID_P2P */
+		wpa_printf(MSG_DEBUG, "P2P: ### Servicing %p dev->flags 0x%x SD schedule %s devaddr " MACSTR,
+			p2p->sd_dev_list, dev->flags, dev->flags & P2P_DEV_SD_SCHEDULE ? "TRUE": "FALSE",
+			MAC2STR(dev->info.p2p_device_addr));
+#endif
 		if (dev->flags & P2P_DEV_SD_SCHEDULE) {
 			if (p2p_start_sd(p2p, dev) == 0)
 				return;
@@ -3422,7 +3423,8 @@ static void p2p_timeout_invite_listen(struct p2p_data *p2p)
 			if (p2p->cfg->invitation_result)
 				p2p->cfg->invitation_result(
 					p2p->cfg->cb_ctx, -1, NULL, NULL,
-					p2p->invite_peer->info.p2p_device_addr);
+					p2p->invite_peer->info.p2p_device_addr,
+					0);
 		}
 		p2p_set_state(p2p, P2P_IDLE);
 	}
@@ -4339,15 +4341,6 @@ p2p_get_peer_found(struct p2p_data *p2p, const u8 *addr, int next)
 	return &dev->info;
 }
 
-#ifdef ANDROID_P2P
-int p2p_search_in_progress(struct p2p_data *p2p)
-{
-	if (p2p == NULL)
-		return 0;
-
-	return p2p->state == P2P_SEARCH;
-}
-#endif
 
 int p2p_in_progress(struct p2p_data *p2p)
 {

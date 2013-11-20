@@ -1110,8 +1110,10 @@ static int hostapd_ctrl_iface_radar(struct hostapd_data *hapd, char *cmd)
 }
 #endif /* CONFIG_TESTING_OPTIONS */
 
+
 static int hostapd_ctrl_iface_chan_switch(struct hostapd_data *hapd, char *pos)
 {
+#ifdef NEED_AP_MLME
 	struct csa_settings settings;
 	int ret = hostapd_parse_csa_settings(pos, &settings);
 
@@ -1119,7 +1121,11 @@ static int hostapd_ctrl_iface_chan_switch(struct hostapd_data *hapd, char *pos)
 		return ret;
 
 	return hostapd_switch_channel(hapd, &settings);
+#else /* NEED_AP_MLME */
+	return -1;
+#endif /* NEED_AP_MLME */
 }
+
 
 static void hostapd_ctrl_iface_receive(int sock, void *eloop_ctx,
 				       void *sock_ctx)

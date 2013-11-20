@@ -11,10 +11,10 @@
 #include <time.h>
 
 #ifdef ANDROID
-#ifdef ANDROID43
-#include <sys/capability.h>
-#else
+#ifdef ANDROID422
 #include <linux/capability.h>
+#else
+#include <sys/capability.h>
 #endif
 #include <linux/prctl.h>
 #include <private/android_filesystem_config.h>
@@ -216,9 +216,6 @@ char * os_rel2abs_path(const char *rel_path)
 	char *buf = NULL, *cwd, *ret;
 	size_t len = 128, cwd_len, rel_len, ret_len;
 	int last_errno;
-
-	if (!rel_path)
-		return NULL;
 
 	if (!rel_path)
 		return NULL;

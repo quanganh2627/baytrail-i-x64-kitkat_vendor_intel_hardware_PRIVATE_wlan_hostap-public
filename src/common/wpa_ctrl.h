@@ -180,7 +180,7 @@ extern "C" {
 #define DFS_EVENT_CAC_COMPLETED "DFS-CAC-COMPLETED "
 #define DFS_EVENT_NOP_FINISHED "DFS-NOP-FINISHED "
 
-#define AP_CSA_FINISHED "AP-CSA-FINISHED"
+#define AP_CSA_FINISHED "AP-CSA-FINISHED "
 
 /* BSS command information masks */
 

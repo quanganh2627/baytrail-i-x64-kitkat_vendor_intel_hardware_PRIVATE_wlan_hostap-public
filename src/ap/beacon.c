@@ -202,9 +202,11 @@ static u8 * hostapd_eid_wpa(struct hostapd_data *hapd, u8 *eid, size_t len)
 	return eid + ielen;
 }
 
-static u8 *hostapd_eid_csa(struct hostapd_data *hapd, u8 *eid)
+
+static u8 * hostapd_eid_csa(struct hostapd_data *hapd, u8 *eid)
 {
 	u8 chan;
+
 	if (!hapd->iface->cs_freq)
 		return eid;
 
@@ -307,8 +309,7 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 	/* save an offset to the counter - should be last byte */
 	hapd->iface->cs_c_off_proberesp = (pos != old_pos) ?
-					  (unsigned int)pos - 1 -
-					  (unsigned int)resp : 0;
+		pos - (u8 *) resp - 1 : 0;
 
 #ifdef CONFIG_IEEE80211AC
 	pos = hostapd_eid_vht_capabilities(hapd, pos);
@@ -614,6 +615,7 @@ static u8 * hostapd_probe_resp_offloads(struct hostapd_data *hapd,
 
 #endif /* NEED_AP_MLME */
 
+
 int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 			       struct wpa_driver_ap_params *params)
 {
@@ -622,13 +624,9 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	size_t head_len = 0, tail_len = 0;
 	u8 *resp = NULL;
 	size_t resp_len = 0;
-
 #ifdef NEED_AP_MLME
 	u16 capab_info;
 	u8 *pos, *tailpos, *old_pos;
-#endif /* NEED_AP_MLME */
-
-#ifdef NEED_AP_MLME
 
 #define BEACON_HEAD_BUF_SIZE 256
 #define BEACON_TAIL_BUF_SIZE 512
@@ -726,8 +724,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	old_pos = tailpos;
 	tailpos = hostapd_eid_csa(hapd, tailpos);
 	hapd->iface->cs_c_off_beacon = (old_pos != tailpos) ?
-				       (unsigned int)tailpos - 1 -
-				       (unsigned int)tail : 0;
+		tailpos - tail - 1 : 0;
 
 #ifdef CONFIG_IEEE80211AC
 	tailpos = hostapd_eid_vht_capabilities(hapd, tailpos);
@@ -774,7 +771,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 #endif /* NEED_AP_MLME */
 
 	os_memset(params, 0, sizeof(*params));
-	params->head = (u8 *)head;
+	params->head = (u8 *) head;
 	params->head_len = head_len;
 	params->tail = tail;
 	params->tail_len = tail_len;
@@ -835,12 +832,17 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	return 0;
 }
 
+
 void ieee802_11_free_ap_params(struct wpa_driver_ap_params *params)
 {
 	os_free(params->tail);
+	params->tail = NULL;
 	os_free(params->head);
+	params->head = NULL;
 	os_free(params->proberesp);
+	params->proberesp = NULL;
 }
+
 
 void ieee802_11_set_beacon(struct hostapd_data *hapd)
 {
@@ -848,7 +850,7 @@ void ieee802_11_set_beacon(struct hostapd_data *hapd)
 	struct wpabuf *beacon, *proberesp, *assocresp;
 
 	if (hapd->iface->csa_in_progress) {
-		wpa_printf(MSG_ERROR, "Can't set beacons during CSA period");
+		wpa_printf(MSG_ERROR, "Cannot set beacons during CSA period");
 		return;
 	}
 
@@ -857,8 +859,8 @@ void ieee802_11_set_beacon(struct hostapd_data *hapd)
 	if (ieee802_11_build_ap_params(hapd, &params) < 0)
 		return;
 
-	if (hostapd_build_ap_extra_ies(hapd, &beacon,
-				       &proberesp, &assocresp) < 0)
+	if (hostapd_build_ap_extra_ies(hapd, &beacon, &proberesp, &assocresp) <
+	    0)
 		goto fail;
 
 	params.beacon_ies = beacon;
@@ -867,7 +869,6 @@ void ieee802_11_set_beacon(struct hostapd_data *hapd)
 
 	if (hostapd_drv_set_ap(hapd, &params))
 		wpa_printf(MSG_ERROR, "Failed to set beacon parameters");
-
 	hostapd_free_ap_extra_ies(hapd, beacon, proberesp, assocresp);
 fail:
 	ieee802_11_free_ap_params(&params);

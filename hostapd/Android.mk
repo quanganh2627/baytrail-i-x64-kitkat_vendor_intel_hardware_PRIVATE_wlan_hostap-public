@@ -54,14 +54,15 @@ INCLUDES += $(LOCAL_PATH)/src
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += external/openssl/include
 INCLUDES += system/security/keystore/include
-# frameworks/base/cmds/keystore is the old location and can be dropped at some
-# point
+
+# Add support for older ANDROID versions
+ifeq "$(PLATFORM_VERSION)" "4.2.2"
 INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
-ifeq "$(PLATFORM_VERSION)" "4.3"
-L_CFLAGS += -DANDROID43
+L_CFLAGS += -DANDROID422
 endif
+
 ifdef CONFIG_DRIVER_NL80211
 INCLUDES += external/libnl-headers
 endif
@@ -905,7 +906,7 @@ endif
 include $(CLEAR_VARS)
 LOCAL_MODULE := hostapd_cli
 LOCAL_MODULE_TAGS := debug
-LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
+LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(OBJS_c)
 LOCAL_C_INCLUDES := $(INCLUDES)
@@ -923,9 +924,7 @@ ifneq ($(BOARD_HOSTAPD_PRIVATE_LIB),)
 ##LOCAL_STATIC_LIBRARIES += $(BOARD_HOSTAPD_PRIVATE_LIB)
 endif
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
-ifeq "$(PLATFORM_VERSION)" "4.3"
-LOCAL_SHARED_LIBRARIES += libkeystore_binder
-endif
+
 ifdef CONFIG_DRIVER_NL80211
 LOCAL_STATIC_LIBRARIES += libnl_2
 endif

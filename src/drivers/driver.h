@@ -42,6 +42,13 @@
 #define HOSTAPD_CHAN_VHT_50_30 0x00002000
 #define HOSTAPD_CHAN_VHT_70_10 0x00004000
 
+enum reg_change_initiator {
+	REGDOM_SET_BY_CORE,
+	REGDOM_SET_BY_USER,
+	REGDOM_SET_BY_DRIVER,
+	REGDOM_SET_BY_COUNTRY_IE,
+};
+
 /**
  * struct hostapd_channel_data - Channel information
  */
@@ -1158,21 +1165,21 @@ struct wpa_signal_info {
 };
 
 /**
- * struct beacon_data - beacon data
- * @head: head portion of beacon (before TIM IE)
- * @tail: tail portion of beacon (after TIM IE)
- * @beacon_ies: extra information element(s) to add into Beacon frames or %NULL
- * @proberesp_ies: extra information element(s) to add into Probe Response
+ * struct beacon_data - Beacon data
+ * @head: Head portion of Beacon frame (before TIM IE)
+ * @tail: Tail portion of Beacon frame (after TIM IE)
+ * @beacon_ies: Extra information element(s) to add into Beacon frames or %NULL
+ * @proberesp_ies: Extra information element(s) to add into Probe Response
  *	frames or %NULL
- * @assocresp_ies: extra information element(s) to add into (Re)Association
+ * @assocresp_ies: Extra information element(s) to add into (Re)Association
  *	Response frames or %NULL
- * @probe_resp: probe response template
- * @head_len: length of @head
- * @tail_len: length of @tail
- * @beacon_ies_len: length of beacon_ies in octets
- * @proberesp_ies_len: length of proberesp_ies in octets
- * @proberesp_ies_len: length of proberesp_ies in octets
- * @probe_resp_len: length of probe response template (@probe_resp)
+ * @probe_resp: Probe Response frame template
+ * @head_len: Length of @head
+ * @tail_len: Length of @tail
+ * @beacon_ies_len: Length of beacon_ies in octets
+ * @proberesp_ies_len: Length of proberesp_ies in octets
+ * @proberesp_ies_len: Length of proberesp_ies in octets
+ * @probe_resp_len: Length of probe response template (@probe_resp)
  */
 struct beacon_data {
 	u8 *head, *tail;
@@ -1189,14 +1196,14 @@ struct beacon_data {
 };
 
 /**
- * struct csa_settings - settings for channel switch command
- * @cs_count: count in beacons to perform the switch
+ * struct csa_settings - Settings for channel switch command
+ * @cs_count: Count in Beacon frames (TBTT) to perform the switch
  * @block_tx: 1 - block transmission for CSA period
- * @freq_params: next channel frequency parameter
- * @beacon_csa: beacon/probe resp/asooc resp info for CSA period
- * @beacon_after: next beacon/probe resp/asooc resp info
- * @counter_offset_beacon: offset to the count field in beacon's tail
- * @counter_offset_presp: offset to the count field in probe resp.
+ * @freq_params: Next channel frequency parameter
+ * @beacon_csa: Beacon/probe resp/asooc resp info for CSA period
+ * @beacon_after: Next beacon/probe resp/asooc resp info
+ * @counter_offset_beacon: Offset to the count field in beacon's tail
+ * @counter_offset_presp: Offset to the count field in probe resp.
  */
 struct csa_settings {
 	u8 cs_count;
@@ -2668,7 +2675,6 @@ struct wpa_driver_ops {
 	 * DEPRECATED - use set_ap() instead
 	 */
 	int (*set_authmode)(void *priv, int authmode);
-
 #ifdef ANDROID
 	/**
 	 * driver_cmd - execute driver-specific command
@@ -2681,7 +2687,6 @@ struct wpa_driver_ops {
 	 */
 	 int (*driver_cmd)(void *priv, char *cmd, char *buf, size_t buf_len);
 #endif
-
 	/**
 	 * set_rekey_info - Set rekey information
 	 * @priv: Private driver interface data
@@ -4066,6 +4071,14 @@ union wpa_event_data {
 		unsigned int freq_filter;
 		struct dl_list survey_list; /* struct freq_survey */
 	} survey_results;
+
+	/**
+	 * channel_list_changed - Data for EVENT_CHANNEL_LIST_CHANGED
+	 * @initiator: Initiator of the regulatory change
+	 */
+	struct channel_list_changed {
+		enum reg_change_initiator initiator;
+	} channel_list_changed;
 };
 
 /**

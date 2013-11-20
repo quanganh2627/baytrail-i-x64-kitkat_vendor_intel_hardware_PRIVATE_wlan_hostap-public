@@ -83,10 +83,6 @@ static int ping_interval = 5;
 static int interactive = 0;
 static char *ifname_prefix = NULL;
 
-#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
-static char* redirect_interface = NULL;
-#endif
-
 struct cli_txt_entry {
 	struct dl_list list;
 	char *txt;
@@ -403,9 +399,6 @@ static void wpa_cli_msg_cb(char *msg, size_t len)
 static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, char *cmd, int print)
 {
 	char buf[4096];
-#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
-	char _cmd[256];
-#endif
 	size_t len;
 	int ret;
 
@@ -419,23 +412,6 @@ static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, char *cmd, int print)
 		buf[sizeof(buf) - 1] = '\0';
 		cmd = buf;
 	}
-#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
-	if (redirect_interface) {
-		char *arg;
-		arg = os_strchr(cmd, ' ');
-		if (arg) {
-			*arg++ = '\0';
-			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s %s",
-					  cmd, redirect_interface, arg);
-		} else {
-			ret = os_snprintf(_cmd, sizeof(_cmd), "%s %s",
-					  cmd, redirect_interface);
-		}
-		cmd = _cmd;
-		os_free(redirect_interface);
-		redirect_interface = NULL;
-	}
-#endif
 	len = sizeof(buf) - 1;
 	ret = wpa_ctrl_request(ctrl, cmd, os_strlen(cmd), buf, &len,
 			       wpa_cli_msg_cb);
@@ -2463,6 +2439,7 @@ static int wpa_cli_cmd_flush(struct wpa_ctrl *ctrl, int argc, char *argv[])
 	return wpa_ctrl_command(ctrl, "FLUSH");
 }
 
+
 enum wpa_cli_cmd_flags {
 	cli_cmd_flag_none		= 0x00,
 	cli_cmd_flag_sensitive		= 0x01
@@ -3122,13 +3099,6 @@ static int wpa_request(struct wpa_ctrl *ctrl, int argc, char *argv[])
 		printf("Unknown command '%s'\n", argv[0]);
 		ret = 1;
 	} else {
-#if defined(CONFIG_P2P) && defined(ANDROID_P2P)
-		if ( (argc >= 2) && (os_strncmp(argv[1], "interface=", 10) == 0)) {
-			redirect_interface = os_strdup(argv[1]);
-			ret = match->handler(ctrl, argc - 2, &argv[2]);
-		}
-		else
-#endif
 		ret = match->handler(ctrl, argc - 1, &argv[1]);
 	}
 

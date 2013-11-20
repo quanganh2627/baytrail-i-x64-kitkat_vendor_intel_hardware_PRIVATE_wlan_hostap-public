@@ -108,23 +108,6 @@ static void nl80211_handle_destroy(struct nl_handle *handle)
 }
 #endif /* CONFIG_LIBNL20 */
 
-#ifdef ANDROID
-/* The libnl version used by AOSP does implement nl_socket_set_nonblocking.
- * Provide here a local implementation. Once this implemented in AOSP this
- * implementation should be removed.
- */
-int nl_socket_set_nonblocking(struct nl_handle *sk)
-{
-	if (nl_socket_get_fd(sk) == -1)
-		return -1;
-
-	if (fcntl(nl_socket_get_fd(sk), F_SETFL, O_NONBLOCK) < 0)
-		return -1;
-
-	return 0;
-}
-#endif
-
 
 #ifdef ANDROID
 /* system/core/libnl_2 does not include nl_socket_set_nonblocking() */
@@ -379,6 +362,14 @@ static int android_pno_start(struct i802_bss *bss,
 			     struct wpa_driver_scan_params *params);
 static int android_pno_stop(struct i802_bss *bss);
 #endif /* ANDROID */
+#ifdef ANDROID_P2P
+int wpa_driver_set_p2p_noa(void *priv, u8 count, int start, int duration);
+int wpa_driver_get_p2p_noa(void *priv, u8 *buf, size_t len);
+int wpa_driver_set_p2p_ps(void *priv, int legacy_ps, int opp_ps, int ctwindow);
+int wpa_driver_set_ap_wps_p2p_ie(void *priv, const struct wpabuf *beacon,
+				  const struct wpabuf *proberesp,
+				  const struct wpabuf *assocresp);
+#endif
 
 static void add_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx);
 static void del_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx);
@@ -2636,6 +2627,7 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				 struct nlattr **tb)
 {
 	struct wpa_driver_nl80211_data *drv = bss->drv;
+	union wpa_event_data data;
 
 	wpa_printf(MSG_DEBUG, "nl80211: Drv Event %d (%s) received for %s",
 		   cmd, nl80211_command_to_string(cmd), bss->ifname);
@@ -2735,8 +2727,33 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 	case NL80211_CMD_REG_CHANGE:
 		wpa_printf(MSG_DEBUG, "nl80211: Regulatory domain change");
+		if (tb[NL80211_ATTR_REG_INITIATOR] == NULL)
+			break;
+		os_memset(&data, 0, sizeof(data));
+		switch (nla_get_u8(tb[NL80211_ATTR_REG_INITIATOR])) {
+		case NL80211_REGDOM_SET_BY_CORE:
+			data.channel_list_changed.initiator =
+				REGDOM_SET_BY_CORE;
+			break;
+		case NL80211_REGDOM_SET_BY_USER:
+			data.channel_list_changed.initiator =
+				REGDOM_SET_BY_USER;
+			break;
+		case NL80211_REGDOM_SET_BY_DRIVER:
+			data.channel_list_changed.initiator =
+				REGDOM_SET_BY_DRIVER;
+			break;
+		case NL80211_REGDOM_SET_BY_COUNTRY_IE:
+			data.channel_list_changed.initiator =
+				REGDOM_SET_BY_COUNTRY_IE;
+			break;
+		default:
+			wpa_printf(MSG_DEBUG, "nl80211: Unknown reg change initiator %d received",
+				   nla_get_u8(tb[NL80211_ATTR_REG_INITIATOR]));
+			break;
+		}
 		wpa_supplicant_event(drv->ctx, EVENT_CHANNEL_LIST_CHANGED,
-				     NULL);
+				     &data);
 		break;
 	case NL80211_CMD_REG_BEACON_HINT:
 		wpa_printf(MSG_DEBUG, "nl80211: Regulatory beacon hint");
@@ -6786,6 +6803,7 @@ static int wpa_driver_nl80211_set_ap(void *priv,
 	return -ENOBUFS;
 }
 
+
 static int nl80211_put_freq_params(struct nl_msg *msg,
 				   struct hostapd_freq_params *freq)
 {
@@ -6840,6 +6858,7 @@ static int nl80211_put_freq_params(struct nl_msg *msg,
 nla_put_failure:
 	return -ENOBUFS;
 }
+
 
 static int wpa_driver_nl80211_set_freq(struct i802_bss *bss,
 				       struct hostapd_freq_params *freq)
@@ -10133,7 +10152,7 @@ static int wpa_driver_nl80211_shared_freq(void *priv)
 			 struct wpa_driver_nl80211_data, list) {
 		if (drv == driver ||
 		    os_strcmp(drv->phyname, driver->phyname) != 0 ||
-		    (!driver->associated && !is_ap_interface(driver->nlmode)))
+		    !driver->associated)
 			continue;
 
 		wpa_printf(MSG_DEBUG, "nl80211: Found a match for PHY %s - %s "
@@ -10622,7 +10641,11 @@ static int nl80211_set_p2p_powersave(void *priv, int legacy_ps, int opp_ps,
 		   "opp_ps=%d ctwindow=%d)", legacy_ps, opp_ps, ctwindow);
 
 	if (opp_ps != -1 || ctwindow != -1)
+#ifdef ANDROID_P2P
+		wpa_driver_set_p2p_ps(priv, legacy_ps, opp_ps, ctwindow);
+#else
 		return -1; /* Not yet supported */
+#endif
 
 	if (legacy_ps == -1)
 		return 0;
@@ -10991,7 +11014,6 @@ static int android_pno_stop(struct i802_bss *bss)
 	return android_priv_cmd(bss, "PNOFORCE 0");
 }
 
-
 static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len)
 {
@@ -11082,7 +11104,6 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 
 	return ret;
 }
-
 #endif /* ANDROID */
 
 
@@ -11389,47 +11410,42 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 	return pos - buf;
 }
 
-static inline int set_beacon_data(struct nl_msg *msg,
-				  struct beacon_data *settings)
+
+static int set_beacon_data(struct nl_msg *msg, struct beacon_data *settings)
 {
 	if (settings->head)
 		NLA_PUT(msg, NL80211_ATTR_BEACON_HEAD,
-			settings->head_len,
-			settings->head);
+			settings->head_len, settings->head);
 
 	if (settings->tail)
 		NLA_PUT(msg, NL80211_ATTR_BEACON_TAIL,
-			settings->tail_len,
-			settings->tail);
+			settings->tail_len, settings->tail);
 
 	if (settings->beacon_ies)
 		NLA_PUT(msg, NL80211_ATTR_IE,
-			settings->beacon_ies_len,
-			settings->beacon_ies);
+			settings->beacon_ies_len, settings->beacon_ies);
 
 	if (settings->proberesp_ies)
 		NLA_PUT(msg, NL80211_ATTR_IE_PROBE_RESP,
-			settings->proberesp_ies_len,
-			settings->proberesp_ies);
+			settings->proberesp_ies_len, settings->proberesp_ies);
 
 	if (settings->assocresp_ies)
 		NLA_PUT(msg,
 			NL80211_ATTR_IE_ASSOC_RESP,
-			settings->assocresp_ies_len,
-			settings->assocresp_ies);
+			settings->assocresp_ies_len, settings->assocresp_ies);
 
 	if (settings->probe_resp)
 		NLA_PUT(msg, NL80211_ATTR_PROBE_RESP,
-			settings->probe_resp_len,
-			settings->probe_resp);
+			settings->probe_resp_len, settings->probe_resp);
+
 	return 0;
 
 nla_put_failure:
 	return -ENOBUFS;
 }
 
-static int nl80211_switch_channel(void *priv,
-				  struct csa_settings *settings)
+
+static int nl80211_switch_channel(void *priv, struct csa_settings *settings)
 {
 	struct nl_msg *msg;
 	struct i802_bss *bss = priv;
@@ -11437,8 +11453,14 @@ static int nl80211_switch_channel(void *priv,
 	struct nlattr *beacon_csa;
 	int ret = -ENOBUFS;
 
-	if (!drv->channel_switch_supported)
+	wpa_printf(MSG_DEBUG, "nl80211: Channel switch request (cs_count=%u block_tx=%u freq=%d)",
+		   settings->cs_count, settings->block_tx,
+		   settings->freq_params.freq);
+
+	if (!drv->channel_switch_supported) {
+		wpa_printf(MSG_DEBUG, "nl80211: Driver does not support channel switch command");
 		return -EOPNOTSUPP;
+	}
 
 	if ((drv->nlmode != NL80211_IFTYPE_AP) &&
 	    (drv->nlmode != NL80211_IFTYPE_P2P_GO))
@@ -11495,14 +11517,21 @@ static int nl80211_switch_channel(void *priv,
 			    settings->counter_offset_presp);
 
 	nla_nest_end(msg, beacon_csa);
-	return send_and_recv_msgs(drv, msg, NULL, NULL);
+	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
+	if (ret) {
+		wpa_printf(MSG_DEBUG, "nl80211: switch_channel failed err=%d (%s)",
+			   ret, strerror(-ret));
+	}
+	return ret;
 
 nla_put_failure:
 	ret = -ENOBUFS;
 error:
 	nlmsg_free(msg);
+	wpa_printf(MSG_DEBUG, "nl80211: Could not build channel switch request");
 	return ret;
 }
+
 
 const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.name = "nl80211",
@@ -11583,8 +11612,13 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.get_mac_addr = wpa_driver_nl80211_get_macaddr,
 	.get_survey = wpa_driver_nl80211_get_survey,
 	.status = wpa_driver_nl80211_status,
+	.switch_channel = nl80211_switch_channel,
+#ifdef ANDROID_P2P
+	.set_noa = wpa_driver_set_p2p_noa,
+	.get_noa = wpa_driver_get_p2p_noa,
+	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie,
+#endif
 #ifdef ANDROID
 	.driver_cmd = wpa_driver_nl80211_driver_cmd,
-#endif /* ANDROID */
-	.switch_channel = nl80211_switch_channel,
+#endif
 };

@@ -381,8 +381,10 @@ int hostapd_ctrl_iface_status(struct hostapd_data *hapd, char *buf,
 	return len;
 }
 
+
 int hostapd_parse_csa_settings(const char *pos,
-			       struct csa_settings *settings) {
+			       struct csa_settings *settings)
+{
 	char *end;
 
 	if (!settings)

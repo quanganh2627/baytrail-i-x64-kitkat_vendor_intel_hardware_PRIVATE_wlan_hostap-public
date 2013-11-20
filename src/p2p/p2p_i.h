@@ -243,7 +243,7 @@ struct p2p_data {
 	 * for service discovery
 	 */
 	struct dl_list *sd_dev_list;
-#endif /* ANDROID_P2P */
+#endif
 
 	/**
 	 * go_neg_peer - Pointer to GO Negotiation peer
@@ -360,12 +360,6 @@ struct p2p_data {
 	 */
 	u16 srv_update_indic;
 
-#ifdef ANDROID_P2P
-	/**
-	 * srv_count - Registered services count
-	 */
-	u16 srv_count;
-#endif
 	struct wpabuf *sd_resp; /* Fragmented SD response */
 	u8 sd_resp_addr[ETH_ALEN];
 	u8 sd_resp_dialog_token;
@@ -599,6 +593,8 @@ int p2p_channels_includes(const struct p2p_channels *channels, u8 reg_class,
 			  u8 channel);
 void p2p_channels_dump(struct p2p_data *p2p, const char *title,
 		       const struct p2p_channels *chan);
+int p2p_channel_select(struct p2p_channels *chans, const int *classes,
+		       u8 *op_class, u8 *op_channel);
 
 /* p2p_parse.c */
 int p2p_parse_p2p_ie(const struct wpabuf *buf, struct p2p_message *msg);

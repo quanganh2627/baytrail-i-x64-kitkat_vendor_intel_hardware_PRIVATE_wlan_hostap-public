@@ -53,10 +53,6 @@ enum p2p_wps_method {
 	WPS_NOT_READY, WPS_PIN_DISPLAY, WPS_PIN_KEYPAD, WPS_PBC
 };
 
-enum p2p_sd_action {
-	SRV_UPDATE, SRV_ADD, SRV_DEL, SRV_FLUSH
-};
-
 /**
  * struct p2p_go_neg_results - P2P Group Owner Negotiation results
  */
@@ -149,7 +145,6 @@ struct p2p_data;
 enum p2p_scan_type {
 	P2P_SCAN_SOCIAL,
 	P2P_SCAN_FULL,
-	P2P_SCAN_SPECIFIC,
 	P2P_SCAN_SOCIAL_PLUS_ONE
 };
 
@@ -391,14 +386,6 @@ struct p2p_config {
 	 * ssid_postfix_len - Length of the ssid_postfix data
 	 */
 	size_t ssid_postfix_len;
-
-#ifdef ANDROID_P2P
-	enum p2p_concurrency_type {
-		P2P_NON_CONCURRENT,
-		P2P_SINGLE_CHANNEL_CONCURRENT,
-		P2P_MULTI_CHANNEL_CONCURRENT,
-	} p2p_concurrency;
-#endif
 
 	/**
 	 * max_listen - Maximum listen duration in ms
@@ -777,6 +764,7 @@ struct p2p_config {
 	 * @bssid: P2P Group BSSID or %NULL if not received
 	 * @channels: Available operating channels for the group
 	 * @addr: Peer address
+	 * @freq: Frequency (in MHz) indicated during invitation or 0
 	 *
 	 * This callback is used to indicate result of an Invitation procedure
 	 * started with a call to p2p_invite(). The indicated status code is
@@ -786,7 +774,7 @@ struct p2p_config {
 	 */
 	void (*invitation_result)(void *ctx, int status, const u8 *bssid,
 				  const struct p2p_channels *channels,
-				  const u8 *addr);
+				  const u8 *addr, int freq);
 
 	/**
 	 * go_connected - Check whether we are connected to a GO
@@ -1078,11 +1066,7 @@ void p2p_sd_response(struct p2p_data *p2p, int freq, const u8 *dst,
  * of the local services. This will increment the Service Update Indicator
  * value which will be used in SD Request and Response frames.
  */
-#ifdef ANDROID_P2P
-void p2p_sd_service_update(struct p2p_data *p2p, int action);
-#else
 void p2p_sd_service_update(struct p2p_data *p2p);
-#endif
 
 
 enum p2p_invite_role {
@@ -1852,22 +1836,6 @@ int p2p_set_no_go_freq(struct p2p_data *p2p,
  * Returns: 0 if P2P module is idle or 1 if an operation is in progress
  */
 int p2p_in_progress(struct p2p_data *p2p);
-
-#ifdef ANDROID_P2P
-/**
- * p2p_search_in_progress - Check whether a P2P SEARCH is in progress
- * @p2p: P2P module context from p2p_init()
- * Returns: 0 if P2P module is idle or 1 if an operation is in progress
- */
-int p2p_search_in_progress(struct p2p_data *p2p);
-
-/**
- * p2p_search_pending - Check whether there is a deferred P2P SEARCH
- * @p2p: P2P module context from p2p_init()
- * Returns: 0 if there is no deferred P2P search or 1 if there is one
- */
-int p2p_search_pending(struct p2p_data *p2p);
-#endif
 
 /**
  * p2p_other_scan_completed - Notify completion of non-P2P scan

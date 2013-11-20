@@ -961,9 +961,9 @@ static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-void hostapd_channel_list_updated(struct hostapd_iface *iface)
+void hostapd_channel_list_updated(struct hostapd_iface *iface, int initiator)
 {
-	if (!iface->wait_channel_update)
+	if (!iface->wait_channel_update || initiator != REGDOM_SET_BY_USER)
 		return;
 
 	wpa_printf(MSG_DEBUG, "Channel list updated - continue setup");
@@ -2015,18 +2015,28 @@ void hostapd_set_state(struct hostapd_iface *iface, enum hostapd_iface_state s)
 	iface->state = s;
 }
 
-static inline void free_beacon_data(struct beacon_data *beacon)
+
+#ifdef NEED_AP_MLME
+
+static void free_beacon_data(struct beacon_data *beacon)
 {
 	os_free(beacon->head);
+	beacon->head = NULL;
 	os_free(beacon->tail);
+	beacon->tail = NULL;
 	os_free(beacon->probe_resp);
+	beacon->probe_resp = NULL;
 	os_free(beacon->beacon_ies);
+	beacon->beacon_ies = NULL;
 	os_free(beacon->proberesp_ies);
+	beacon->proberesp_ies = NULL;
 	os_free(beacon->assocresp_ies);
+	beacon->assocresp_ies = NULL;
 }
 
+
 static int hostapd_build_beacon_data(struct hostapd_iface *iface,
-			     struct beacon_data *beacon)
+				     struct beacon_data *beacon)
 {
 	struct wpabuf *beacon_extra, *proberesp_extra, *assocresp_extra;
 	struct wpa_driver_ap_params params;
@@ -2085,8 +2095,8 @@ static int hostapd_build_beacon_data(struct hostapd_iface *iface,
 		if (!beacon->proberesp_ies)
 			goto free_beacon;
 
-		os_memcpy(beacon->proberesp_ies,
-			  proberesp_extra->buf, wpabuf_len(proberesp_extra));
+		os_memcpy(beacon->proberesp_ies, proberesp_extra->buf,
+			  wpabuf_len(proberesp_extra));
 		beacon->proberesp_ies_len = wpabuf_len(proberesp_extra);
 	}
 
@@ -2096,8 +2106,8 @@ static int hostapd_build_beacon_data(struct hostapd_iface *iface,
 		if (!beacon->assocresp_ies)
 			goto free_beacon;
 
-		os_memcpy(beacon->assocresp_ies,
-			  assocresp_extra->buf, wpabuf_len(assocresp_extra));
+		os_memcpy(beacon->assocresp_ies, assocresp_extra->buf,
+			  wpabuf_len(assocresp_extra));
 		beacon->assocresp_ies_len = wpabuf_len(assocresp_extra);
 	}
 
@@ -2115,10 +2125,11 @@ free_ap_params:
 	return ret;
 }
 
+
 /*
- * TODO: this flow currently supports only changing frequency within the
- * same hw_mode. Any other changes to mac parameters or provided
- * settings (even width) are not supported.
+ * TODO: This flow currently supports only changing frequency within the
+ * same hw_mode. Any other changes to MAC parameters or provided settings (even
+ * width) are not supported.
  */
 static int hostapd_change_config_freq(struct hostapd_data *hapd,
 				      struct hostapd_config *conf,
@@ -2152,8 +2163,9 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 	return 0;
 }
 
-int hostapd_fill_csa_settings(struct hostapd_iface *iface,
-			      struct csa_settings *settings)
+
+static int hostapd_fill_csa_settings(struct hostapd_iface *iface,
+				     struct csa_settings *settings)
 {
 	struct hostapd_freq_params old_freq;
 	int ret;
@@ -2194,12 +2206,6 @@ int hostapd_fill_csa_settings(struct hostapd_iface *iface,
 	return 0;
 }
 
-void hostapd_free_csa_settings(struct csa_settings *settings)
-{
-	free_beacon_data(&settings->beacon_csa);
-	free_beacon_data(&settings->beacon_after);
-}
-
 
 void hostapd_cleanup_cs_params(struct hostapd_data *hapd)
 {
@@ -2211,6 +2217,7 @@ void hostapd_cleanup_cs_params(struct hostapd_data *hapd)
 	hapd->iface->csa_in_progress = 0;
 }
 
+
 int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings)
 {
@@ -2220,14 +2227,17 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
 		return ret;
 
 	ret = hostapd_drv_switch_channel(hapd, settings);
-	hostapd_free_csa_settings(settings);
+	free_beacon_data(&settings->beacon_csa);
+	free_beacon_data(&settings->beacon_after);
 
-	if (!ret)
-		hapd->iface->csa_in_progress = 1;
-	else
+	if (ret) {
 		/* if we failed, clean cs parameters */
 		hostapd_cleanup_cs_params(hapd);
+		return ret;
+	}
 
-	return ret;
+	hapd->iface->csa_in_progress = 1;
+	return 0;
 }
 
+#endif /* NEED_AP_MLME */

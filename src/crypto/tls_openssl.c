@@ -57,10 +57,10 @@
 
 #ifdef ANDROID
 #include <openssl/pem.h>
-#ifdef ANDROID43
-#include <keystore/keystore_get.h>
-#else
+#ifdef ANDROID422
 #include "keystore_get.h"
+#else
+#include <keystore/keystore_get.h>
 #endif
 #endif /* ANDROID */
 
@@ -1508,7 +1508,14 @@ static int tls_load_ca_der(void *_ssl_ctx, const char *ca_cert)
 #ifdef ANDROID
 static BIO * BIO_from_keystore(const char *key)
 {
-#ifdef ANDROID43
+#ifdef ANDROID422
+	BIO *bio = NULL;
+	char value[KEYSTORE_MESSAGE_SIZE];
+	int length = keystore_get(key, strlen(key), value);
+	if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL)
+		BIO_write(bio, value, length);
+	return bio;
+#else /* ANDROID422 */
 	BIO *bio = NULL;
 	uint8_t *value = NULL;
 	int length = keystore_get(key, strlen(key), &value);
@@ -1516,14 +1523,7 @@ static BIO * BIO_from_keystore(const char *key)
 		BIO_write(bio, value, length);
 	free(value);
 	return bio;
-#else /* ANDROID43 */
-	BIO *bio = NULL;
-	char value[KEYSTORE_MESSAGE_SIZE];
-	int length = keystore_get(key, strlen(key), value);
-	if (length != -1 && (bio = BIO_new(BIO_s_mem())) != NULL)
-		BIO_write(bio, value, length);
-	return bio;
-#endif /* ANDROID43 */
+#endif /* ANDROID422 */
 }
 #endif /* ANDROID */
 

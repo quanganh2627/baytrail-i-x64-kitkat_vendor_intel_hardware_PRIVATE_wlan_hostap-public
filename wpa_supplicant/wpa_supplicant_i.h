@@ -57,6 +57,14 @@ struct wpa_interface {
 	const char *confname;
 
 	/**
+	 * confanother - Additional configuration name (file or profile) name
+	 *
+	 * This can also be %NULL when the additional configuration file is not
+	 * used.
+	 */
+	const char *confanother;
+
+	/**
 	 * conf_p2p_dev - Additional configuration file used for the P2P Device
 	 * functionality.
 	 *
@@ -64,14 +72,6 @@ struct wpa_interface {
 	 * interfaces is created, the main configuration file will be used.
 	 */
 	const char *conf_p2p_dev;
-
-	/**
-	 * confanother - Additional configuration name (file or profile) name
-	 *
-	 * This can also be %NULL when the additional configuration file is not
-	 * used.
-	 */
-	const char *confanother;
 
 	/**
 	 * ctrl_interface - Control interface parameter

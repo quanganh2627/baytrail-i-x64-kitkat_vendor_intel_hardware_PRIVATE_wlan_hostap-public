@@ -76,14 +76,15 @@ INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += $(LOCAL_PATH)/src/wps
 INCLUDES += external/openssl/include
 INCLUDES += system/security/keystore/include
-# frameworks/base/cmds/keystore is the old location and can be dropped at some
-# point
+
+# Add support for older android versions
+ifeq "$(PLATFORM_VERSION)" "4.2.2"
 INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
-ifeq "$(PLATFORM_VERSION)" "4.3"
-L_CFLAGS += -DANDROID43
+L_CFLAGS += -DANDROID422
 endif
+
 ifdef CONFIG_DRIVER_NL80211
 INCLUDES += external/libnl-headers
 endif
@@ -1580,9 +1581,11 @@ LOCAL_SHARED_LIBRARIES := libc libcutils liblog
 ifeq ($(CONFIG_TLS), openssl)
 LOCAL_SHARED_LIBRARIES += libcrypto libssl
 endif
-ifeq "$(PLATFORM_VERSION)" "4.3"
+
+ifneq "$(PLATFORM_VERSION)" "4.2.2"
 LOCAL_SHARED_LIBRARIES += libkeystore_binder
 endif
+
 ifdef CONFIG_DRIVER_NL80211
 LOCAL_STATIC_LIBRARIES += libnl_2
 endif
