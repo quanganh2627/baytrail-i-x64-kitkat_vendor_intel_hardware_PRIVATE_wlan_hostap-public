@@ -964,7 +964,7 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 			os_free(val);
 		}
 	}
-	if (config->p2p_add_cli_chan)
+	if (config->p2p_add_cli_chan != DEFAULT_P2P_ADD_CLI_CHAN)
 		fprintf(f, "p2p_add_cli_chan=%d\n", config->p2p_add_cli_chan);
 	if (config->p2p_go_ht40)
 		fprintf(f, "p2p_go_ht40=%u\n", config->p2p_go_ht40);
