@@ -1907,4 +1907,13 @@ int p2p_set_disc_int(struct p2p_data *p2p, int min_disc_int, int max_disc_int,
  */
 const char * p2p_get_state_txt(struct p2p_data *p2p);
 
+/**
+ * p2p_is_indoor_device - Deduce if the peer device is an indoor device or not
+ * based on the WPS primary and secondary device types.
+ *
+ * @peer: pointer to the peer device
+ * Returns 1 if indoor device, 0 if not.
+ */
+unsigned int p2p_is_indoor_device(struct p2p_peer_info *peer);
+
 #endif /* P2P_H */

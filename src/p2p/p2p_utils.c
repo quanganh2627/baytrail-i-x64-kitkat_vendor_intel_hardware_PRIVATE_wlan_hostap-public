@@ -10,7 +10,7 @@
 
 #include "common.h"
 #include "p2p_i.h"
-
+#include "wps/wps_defs.h"
 
 /**
  * p2p_random - Generate random string for SSID and passphrase
@@ -505,4 +505,68 @@ int p2p_channel_select(struct p2p_channels *chans, const int *classes,
 	}
 
 	return -1;
+}
+
+unsigned int p2p_is_indoor_device(struct p2p_peer_info *peer)
+{
+	int cat, sub;
+	if (!peer)
+		return 0;
+
+	cat = WPA_GET_BE16(peer->pri_dev_type);
+	sub = WPA_GET_BE16(&peer->pri_dev_type[6]);
+
+	switch (cat) {
+	case WPS_DEV_COMPUTER:
+		switch (sub) {
+		case WPS_DEV_COMPUTER_SERVER:
+		case WPS_DEV_COMPUTER_MEDIA_CENTER:
+		case WPS_DEV_COMPUTER_DESKTOP:
+			return 1;
+		case WPS_DEV_COMPUTER_PC:
+		case WPS_DEV_COMPUTER_ULTRA_MOBILE:
+		case WPS_DEV_COMPUTER_NOTEBOOK:
+		case WPS_DEV_COMPUTER_MID:
+		default:
+			return 0;
+		}
+		break;
+	case WPS_DEV_MULTIMEDIA:
+		switch (sub) {
+		case WPS_DEV_MULTIMEDIA_DAR:
+		case WPS_DEV_MULTIMEDIA_PVR:
+		case WPS_DEV_MULTIMEDIA_MCX:
+		case WPS_DEV_MULTIMEDIA_SET_TOP_BOX:
+		case WPS_DEV_MULTIMEDIA_MEDIA_SERVER:
+			return 1;
+		case WPS_DEV_MULTIMEDIA_PORTABLE_VIDEO_PLAYER:
+		default:
+			return 0;
+		}
+		break;
+	case WPS_DEV_GAMING:
+		switch (sub) {
+		case WPS_DEV_GAMING_XBOX:
+		case WPS_DEV_GAMING_XBOX360:
+		case WPS_DEV_GAMING_PLAYSTATION:
+		case WPS_DEV_GAMING_GAME_CONSOLE:
+			return 1;
+		case WPS_DEV_GAMING_PORTABLE_DEVICE:
+		default:
+			return 0;
+		}
+		break;
+	case WPS_DEV_PRINTER:
+	case WPS_DEV_DISPLAY:
+	case WPS_DEV_NETWORK_INFRA:
+	case WPS_DEV_STORAGE:
+		return 1;
+	case WPS_DEV_INPUT:
+	case WPS_DEV_CAMERA:
+	case WPS_DEV_PHONE:
+	case WPS_DEV_AUDIO:
+	default:
+		return 0;
+	}
+	return 0;
 }
