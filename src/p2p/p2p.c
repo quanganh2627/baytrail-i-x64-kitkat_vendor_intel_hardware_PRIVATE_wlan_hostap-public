@@ -4013,29 +4013,9 @@ int p2p_set_listen_channel(struct p2p_data *p2p, u8 reg_class, u8 channel,
 	return 0;
 }
 
-int p2p_active_shared_freqs(struct p2p_data *p2p, int *freqs,
-			    unsigned int num)
+u8 p2p_get_listen_channel(struct p2p_data *p2p)
 {
-	u8 candidate_channel = 0;
-	unsigned int i;
-
-	for (i = 0; i < num; i++) {
-		u8 channel = 0, op_class;
-		p2p_freq_to_channel(freqs[i], &op_class, &channel);
-
-		/* already using one of the active frequencies; no need
-		 * to change */
-		if (p2p->cfg->channel == channel)
-			return 0;
-
-		if (channel == 1 || channel == 6 || channel == 11)
-			candidate_channel = channel;
-	}
-
-	if (candidate_channel)
-		p2p_set_listen_channel(p2p, 81, candidate_channel, 0);
-
-	return 0;
+	return p2p->cfg->channel;
 }
 
 int p2p_set_ssid_postfix(struct p2p_data *p2p, const u8 *postfix, size_t len)

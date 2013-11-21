@@ -1662,14 +1662,7 @@ void p2p_set_managed_oper(struct p2p_data *p2p, int enabled);
 int p2p_set_listen_channel(struct p2p_data *p2p, u8 reg_class, u8 channel,
 			   u8 forced);
 
-/**
- * p2p_active_shared_freqs: notify about current active shared freqs
- * @p2p: P2P module context from p2p_init()
- * @freqs: array of currently used frequencies.
- * @num: number of entries in the array
- */
-int p2p_active_shared_freqs(struct p2p_data *p2p, int *freqs,
-			    unsigned int num);
+u8 p2p_get_listen_channel(struct p2p_data *p2p);
 
 int p2p_set_ssid_postfix(struct p2p_data *p2p, const u8 *postfix, size_t len);
 

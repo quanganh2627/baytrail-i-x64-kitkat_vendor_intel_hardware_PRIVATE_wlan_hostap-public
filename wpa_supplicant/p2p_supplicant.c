@@ -7026,24 +7026,52 @@ int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s)
 	return 0;
 }
 
+static void wpas_p2p_optimize_listen_channel(struct wpa_supplicant *wpa_s,
+					     struct wpa_used_freq_data *freqs,
+					     unsigned int num)
+{
+	u8 curr_chan, cand, chan;
+	unsigned int i;
+
+	/* If possible, optimize the P2P_DEVICE interface to use a listen
+	 * channel that is already used by one of the other interfaces.
+	 */
+	if (!wpa_s->conf->p2p_optimize_listen_chan)
+		return;
+
+	if (!wpa_s->current_ssid || wpa_s->wpa_state != WPA_COMPLETED)
+		return;
+
+	curr_chan = p2p_get_listen_channel(wpa_s->global->p2p);
+	for (i = 0, cand = 0; i < num; i++) {
+		ieee80211_freq_to_chan(freqs[i].freq, &chan);
+		if (curr_chan == chan) {
+			cand = 0;
+			break;
+		}
+
+		if (chan == 1 || chan == 6 || chan == 11)
+			cand = chan;
+	}
+
+	if (cand)
+		p2p_set_listen_channel(wpa_s->global->p2p, 81, cand, 0);
+}
+
 void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 {
+	struct wpa_used_freq_data *freqs = NULL;
+	unsigned int num = wpa_s->num_multichan_concurrent;
+
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return;
 
-	if (wpa_s->current_ssid && wpa_s->wpa_state == WPA_COMPLETED) {
-		int *freqs = NULL;
-		unsigned int num;
+	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
+	if (!freqs)
+		return;
 
-		freqs = os_calloc(wpa_s->num_multichan_concurrent,
-				  sizeof(int));
-		if (!freqs)
-			return;
+	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
 
-		num = get_shared_radio_freqs(wpa_s, freqs,
-					     wpa_s->num_multichan_concurrent);
-
-		p2p_active_shared_freqs(wpa_s->global->p2p, freqs, num);
-		os_free(freqs);
-	}
+	wpas_p2p_optimize_listen_channel(wpa_s, freqs, num);
+	os_free(freqs);
 }
