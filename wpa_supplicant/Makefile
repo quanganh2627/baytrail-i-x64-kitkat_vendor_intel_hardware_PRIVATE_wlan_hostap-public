@@ -114,6 +114,13 @@ endif
 OBJS += ../src/utils/$(CONFIG_ELOOP).o
 OBJS_c += ../src/utils/$(CONFIG_ELOOP).o
 
+ifeq ($(CONFIG_ELOOP), eloop)
+# Using glibc < 2.17 requires -lrt for clock_gettime()
+LIBS += -lrt
+LIBS_c += -lrt
+LIBS_p += -lrt
+endif
+
 ifdef CONFIG_ELOOP_POLL
 CFLAGS += -DCONFIG_ELOOP_POLL
 endif
@@ -121,6 +128,13 @@ endif
 
 ifdef CONFIG_EAPOL_TEST
 CFLAGS += -Werror -DEAPOL_TEST
+endif
+
+ifdef CONFIG_CODE_COVERAGE
+CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+LIBS += -lgcov
+LIBS_c += -lgcov
+LIBS_p += -lgcov
 endif
 
 ifdef CONFIG_HT_OVERRIDES
@@ -1668,7 +1682,8 @@ fips:
 clean:
 	$(MAKE) -C ../src clean
 	$(MAKE) -C dbus clean
-	rm -f core *~ *.o *.d eap_*.so $(ALL) $(WINALL) eapol_test preauth_test
+	rm -f core *~ *.o *.d *.gcno *.gcda *.gcov
+	rm -f eap_*.so $(ALL) $(WINALL) eapol_test preauth_test
 	rm -f wpa_priv
 	rm -f nfc_pw_token
 

@@ -189,10 +189,13 @@ static void wpas_p2p_set_own_freq_preference(struct wpa_supplicant *wpa_s,
 {
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return;
-	if (freq > 0 && wpa_s->num_multichan_concurrent > 1 &&
-	    wpas_p2p_num_unused_channels(wpa_s) > 0 &&
-	    wpa_s->parent->conf->p2p_ignore_shared_freq)
+	if (wpa_s->parent->conf->p2p_ignore_shared_freq &&
+	    freq > 0 && wpa_s->num_multichan_concurrent > 1 &&
+	    wpas_p2p_num_unused_channels(wpa_s) > 0) {
+		wpa_printf(MSG_DEBUG, "P2P: Ignore own channel preference %d MHz due to p2p_ignore_shared_freq=1 configuration",
+			   freq);
 		freq = 0;
+	}
 	p2p_set_own_freq_preference(wpa_s->global->p2p, freq);
 }
 
@@ -2760,11 +2763,10 @@ accept_inv:
 	/* Get one of the frequencies currently in use */
 	if (best_freq > 0) {
 		wpa_printf(MSG_DEBUG, "P2P: Trying to force channel to match a channel already used by one of the interfaces");
-		*force_freq = best_freq;
 		wpas_p2p_set_own_freq_preference(wpa_s, best_freq);
 	}
 
-	if (*force_freq > 0 && wpa_s->num_multichan_concurrent > 1 &&
+	if (wpa_s->num_multichan_concurrent > 1 &&
 	    wpas_p2p_num_unused_channels(wpa_s) > 0) {
 		if (*go == 0) {
 			/* We are the client */
@@ -2781,8 +2783,10 @@ accept_inv:
 				   *force_freq);
 			*force_freq = 0;
 		}
+	} else { 
+		wpa_printf(MSG_DEBUG, "P2P: No extra channels available - trying to force channel to match a channel already used by one of the interfaces");
+		*force_freq = best_freq;
 	}
-
 	return P2P_SC_SUCCESS;
 }
 
@@ -4420,7 +4424,8 @@ int wpas_p2p_connect(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 				   go_intent == 15);
 	if (res)
 		return res;
-	wpas_p2p_set_own_freq_preference(wpa_s, force_freq);
+	wpas_p2p_set_own_freq_preference(wpa_s,
+					 force_freq ? force_freq : pref_freq);
 
 	wpa_s->create_p2p_iface = wpas_p2p_create_iface(wpa_s);
 
@@ -4892,9 +4897,9 @@ static int wpas_start_p2p_client(struct wpa_supplicant *wpa_s,
 	if (params->passphrase)
 		ssid->passphrase = os_strdup(params->passphrase);
 
-	wpa_supplicant_select_network(wpa_s, ssid);
-
 	wpa_s->show_group_started = 1;
+
+	wpa_supplicant_select_network(wpa_s, ssid);
 
 	return 0;
 }
@@ -5404,6 +5409,7 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 	u8 *bssid = NULL;
 	int force_freq = 0;
 	int res;
+	int no_pref_freq_given = pref_freq == 0;
 
 	wpa_s->global->p2p_invite_group = NULL;
 	if (peer_addr)
@@ -5449,6 +5455,15 @@ int wpas_p2p_invite(struct wpa_supplicant *wpa_s, const u8 *peer_addr,
 
 	if (wpa_s->global->p2p_disabled || wpa_s->global->p2p == NULL)
 		return -1;
+
+	if (wpa_s->parent->conf->p2p_ignore_shared_freq &&
+	    no_pref_freq_given && pref_freq > 0 &&
+	    wpa_s->num_multichan_concurrent > 1 &&
+	    wpas_p2p_num_unused_channels(wpa_s) > 0) {
+		wpa_printf(MSG_DEBUG, "P2P: Ignore own channel preference %d MHz for invitation due to p2p_ignore_shared_freq=1 configuration",
+			   pref_freq);
+		pref_freq = 0;
+	}
 
 	return p2p_invite(wpa_s->global->p2p, peer_addr, role, bssid,
 			  ssid->ssid, ssid->ssid_len, force_freq, go_dev_addr,
@@ -6378,7 +6393,6 @@ int wpas_p2p_scan_no_go_seen(struct wpa_supplicant *wpa_s)
 
 unsigned int wpas_p2p_search_delay(struct wpa_supplicant *wpa_s)
 {
-	const char *rn, *rn2;
 	struct wpa_supplicant *ifs;
 
 	if (wpa_s->wpa_state > WPA_SCANNING) {
@@ -6388,20 +6402,9 @@ unsigned int wpas_p2p_search_delay(struct wpa_supplicant *wpa_s)
 		return P2P_CONCURRENT_SEARCH_DELAY;
 	}
 
-	if (!wpa_s->driver->get_radio_name)
-		return 0;
-	rn = wpa_s->driver->get_radio_name(wpa_s->drv_priv);
-	if (rn == NULL || rn[0] == '\0')
-		return 0;
-
-	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
-		if (ifs == wpa_s || !ifs->driver->get_radio_name)
-			continue;
-
-		rn2 = ifs->driver->get_radio_name(ifs->drv_priv);
-		if (!rn2 || os_strcmp(rn, rn2) != 0)
-			continue;
-		if (ifs->wpa_state > WPA_SCANNING) {
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (ifs != wpa_s && ifs->wpa_state > WPA_SCANNING) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "P2P: Use %u ms search "
 				"delay due to concurrent operation on "
 				"interface %s",

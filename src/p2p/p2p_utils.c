@@ -477,34 +477,31 @@ int p2p_channel_select(struct p2p_channels *chans, const int *classes,
 {
 	unsigned int i, j, r;
 
-	for (i = 0; i < chans->reg_classes; i++) {
+	for (j = 0; classes[j]; j++) {
+		for (i = 0; i < chans->reg_classes; i++) {
 #ifdef ANDROID_P2P
-		struct p2p_reg_class prc;
-		struct p2p_reg_class *c = &prc;
-		p2p_copy_reg_class(c, &chans->reg_class[i]);
+			struct p2p_reg_class prc;
+			struct p2p_reg_class *c = &prc;
+			p2p_copy_reg_class(c, &chans->reg_class[i]);
 #else
-		struct p2p_reg_class *c = &chans->reg_class[i];
+			struct p2p_reg_class *c = &chans->reg_class[i];
 #endif
 
-		if (c->channels == 0)
-			continue;
+			if (c->channels == 0)
+				continue;
 
-		for (j = 0; classes[j]; j++) {
-			if (c->reg_class == classes[j])
-				break;
+			if (c->reg_class == classes[j]) {
+				/*
+				 * Pick one of the available channels in the
+				 * operating class at random.
+				 */
+				os_get_random((u8 *) &r, sizeof(r));
+				r %= c->channels;
+				*op_class = c->reg_class;
+				*op_channel = c->channel[r];
+				return 0;
+			}
 		}
-		if (!classes[j])
-			continue;
-
-		/*
-		 * Pick one of the available channels in the operating class at
-		 * random.
-		 */
-		os_get_random((u8 *) &r, sizeof(r));
-		r %= c->channels;
-		*op_class = c->reg_class;
-		*op_channel = c->channel[r];
-		return 0;
 	}
 
 	return -1;

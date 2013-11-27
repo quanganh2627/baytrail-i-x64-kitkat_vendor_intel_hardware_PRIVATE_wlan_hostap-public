@@ -84,6 +84,14 @@ CONFIG_ELOOP=eloop
 endif
 OBJS += ../src/utils/$(CONFIG_ELOOP).o
 OBJS_c += ../src/utils/$(CONFIG_ELOOP).o
+
+ifeq ($(CONFIG_ELOOP), eloop)
+# Using glibc < 2.17 requires -lrt for clock_gettime()
+LIBS += -lrt
+LIBS_c += -lrt
+LIBS_h += -lrt
+endif
+
 OBJS += ../src/utils/common.o
 OBJS += ../src/utils/wpa_debug.o
 OBJS_c += ../src/utils/wpa_debug.o
@@ -96,6 +104,14 @@ OBJS += ../src/common/wpa_common.o
 
 OBJS += ../src/eapol_auth/eapol_auth_sm.o
 
+
+ifdef CONFIG_CODE_COVERAGE
+CFLAGS += -O0 -fprofile-arcs -ftest-coverage
+LIBS += -lgcov
+LIBS_c += -lgcov
+LIBS_h += -lgcov
+LIBS_n += -lgcov
+endif
 
 ifndef CONFIG_NO_DUMP_STATE
 # define HOSTAPD_DUMP_STATE to include SIGUSR1 handler for dumping state to
@@ -931,6 +947,6 @@ hlr_auc_gw: $(HOBJS)
 clean:
 	$(MAKE) -C ../src clean
 	rm -f core *~ *.o hostapd hostapd_cli nt_password_hash hlr_auc_gw
-	rm -f *.d
+	rm -f *.d *.gcno *.gcda *.gcov
 
 -include $(OBJS:%.o=%.d)
