@@ -16,9 +16,11 @@ endif
 
 include $(LOCAL_PATH)/android.config
 
-WIFI_DRIVER_SOCKET_IFACE = DIR=\/data\/system\/wpa_supplicant GROUP=wifi
+ifeq ($(PLATFORM_VERSION), 4.2.2)
 ifndef PRIVATE_WPA_SUPPLICANT_CONF
-  include $(LOCAL_PATH)/wpa_supplicant_conf.mk
+WIFI_DRIVER_SOCKET_IFACE = DIR=\/data\/system\/wpa_supplicant GROUP=wifi
+include $(LOCAL_PATH)/wpa_supplicant_conf.mk
+endif
 endif
 
 # To ignore possible wrong network configurations
