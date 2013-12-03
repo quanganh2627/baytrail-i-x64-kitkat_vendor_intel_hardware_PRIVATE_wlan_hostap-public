@@ -56,7 +56,7 @@ INCLUDES += external/openssl/include
 INCLUDES += system/security/keystore/include
 
 # Add support for older ANDROID versions
-ifeq "$(PLATFORM_VERSION)" "4.2.2"
+ifeq ($(PLATFORM_VERSION), 4.2.2)
 INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore

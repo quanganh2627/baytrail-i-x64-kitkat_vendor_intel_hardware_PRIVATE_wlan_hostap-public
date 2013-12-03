@@ -82,7 +82,7 @@ INCLUDES += external/openssl/include
 INCLUDES += system/security/keystore/include
 
 # Add support for older android versions
-ifeq "$(PLATFORM_VERSION)" "4.2.2"
+ifeq ($(PLATFORM_VERSION), 4.2.2)
 INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
@@ -1586,7 +1586,7 @@ ifeq ($(CONFIG_TLS), openssl)
 LOCAL_SHARED_LIBRARIES += libcrypto libssl
 endif
 
-ifneq "$(PLATFORM_VERSION)" "4.2.2"
+ifneq ($(PLATFORM_VERSION), 4.2.2)
 LOCAL_SHARED_LIBRARIES += libkeystore_binder
 endif
 
