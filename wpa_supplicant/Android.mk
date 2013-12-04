@@ -79,12 +79,11 @@ INCLUDES += $(LOCAL_PATH)/src/tls
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += $(LOCAL_PATH)/src/wps
 INCLUDES += external/openssl/include
-INCLUDES += system/security/keystore/include
+INCLUDES += system/security/keystore
 
 # Add support for older android versions
 ifeq ($(PLATFORM_VERSION), 4.2.2)
 INCLUDES += frameworks/base/cmds/keystore
-INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
 L_CFLAGS += -DANDROID422
 endif

@@ -53,12 +53,11 @@ INCLUDES = $(LOCAL_PATH)
 INCLUDES += $(LOCAL_PATH)/src
 INCLUDES += $(LOCAL_PATH)/src/utils
 INCLUDES += external/openssl/include
-INCLUDES += system/security/keystore/include
+INCLUDES += system/security/keystore
 
 # Add support for older ANDROID versions
 ifeq ($(PLATFORM_VERSION), 4.2.2)
 INCLUDES += frameworks/base/cmds/keystore
-INCLUDES += system/security/keystore
 INCLUDES += system/security/keystore/include/keystore
 L_CFLAGS += -DANDROID422
 endif
