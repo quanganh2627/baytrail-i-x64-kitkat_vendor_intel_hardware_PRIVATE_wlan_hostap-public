@@ -19,6 +19,7 @@
 #include "ibss_rsn.h"
 #include "traffic_monitor.h"
 
+#ifdef CONFIG_AP
 /*
  * This function returns int because its used as a callback for
  * ap_for_each_sta. It always returns zero.
@@ -38,13 +39,20 @@ static int update_sta_stats(struct hostapd_data *hapd, struct sta_info *sta,
 	return 0;
 }
 
-static void update_ap_stats(struct hostapd_iface *hapd)
+static void update_ap_stats(struct wpa_supplicant *wpa_s)
 {
+	struct hostapd_iface *hapd = wpa_s->ap_iface;
 	size_t i;
 
 	for (i = 0; i < hapd->num_bss; ++i)
 		ap_for_each_sta(hapd->bss[i], update_sta_stats, NULL);
 }
+
+#else
+static void update_ap_stats(struct wpa_supplicant *wpa_s)
+{
+}
+#endif /* CONFIG_AP */
 
 static void update_infra_stats(struct wpa_supplicant *wpa_s)
 {
@@ -99,28 +107,11 @@ static void update_iface_stats(struct wpa_supplicant *wpa_s)
 		break;
 	case WPAS_MODE_AP:
 	case WPAS_MODE_P2P_GO:
-		update_ap_stats(wpa_s->ap_iface);
+		update_ap_stats(wpa_s);
 		break;
 	case WPAS_MODE_P2P_GROUP_FORMATION:
 		break;
 	}
-}
-
-/*
- * This function returns int because its used as a callback for
- * ap_for_each_sta. It always returns zero.
- */
-static int get_sta_stats_and_update(struct hostapd_data *hapd,
-				struct sta_info *sta, void *ctx)
-{
-	struct traffic_info last = sta->traffic_data;
-
-	update_sta_stats(hapd, sta, NULL);
-	if (sta->traffic_data.updated && last.updated)
-		sta->traffic_data.bytes_over_interval =
-			sta->traffic_data.rx_bytes - last.rx_bytes
-			+ sta->traffic_data.tx_bytes - last.tx_bytes;
-	return 0;
 }
 
 static void get_infra_stats_and_update(struct wpa_supplicant *wpa_s)
@@ -160,6 +151,24 @@ static void get_ibss_stats_and_update(struct wpa_supplicant *wpa_s)
 	wpa_s->traffic_data.updated = TRUE;
 }
 
+#ifdef CONFIG_AP
+/*
+ * This function returns int because its used as a callback for
+ * ap_for_each_sta. It always returns zero.
+ */
+static int get_sta_stats_and_update(struct hostapd_data *hapd,
+				struct sta_info *sta, void *ctx)
+{
+	struct traffic_info last = sta->traffic_data;
+
+	update_sta_stats(hapd, sta, NULL);
+	if (sta->traffic_data.updated && last.updated)
+		sta->traffic_data.bytes_over_interval =
+			sta->traffic_data.rx_bytes - last.rx_bytes
+			+ sta->traffic_data.tx_bytes - last.tx_bytes;
+	return 0;
+}
+
 static void get_ap_stats_and_update(struct wpa_supplicant *wpa_s)
 {
 	size_t i;
@@ -170,6 +179,13 @@ static void get_ap_stats_and_update(struct wpa_supplicant *wpa_s)
 	os_get_time(&wpa_s->traffic_data.last_check);
 	wpa_s->traffic_data.updated = TRUE;
 }
+
+#else
+static void get_ap_stats_and_update(struct wpa_supplicant *wpa_s)
+{
+
+}
+#endif /* CONFIG_AP */
 
 static void get_iface_stats_and_update(struct wpa_supplicant *wpa_s)
 {
@@ -191,6 +207,7 @@ static void get_iface_stats_and_update(struct wpa_supplicant *wpa_s)
 	}
 }
 
+#ifdef CONFIG_AP
 /*
  * This function returns int because its used as a callback for
  * ap_for_each_sta. It always returns zero.
@@ -215,6 +232,13 @@ static unsigned long get_ap_bytes(struct wpa_supplicant *iface)
 				&total);
 	return total;
 }
+
+#else
+static unsigned long get_ap_bytes(struct wpa_supplicant *iface)
+{
+	return 0;
+}
+#endif /* CONFIG_AP */
 
 static unsigned long get_ibss_bytes(struct wpa_supplicant *wpa_s)
 {
