@@ -658,6 +658,35 @@ struct wpa_config {
 	int p2p_group_idle;
 
 	/**
+	 * p2p_go_freq_change_policy - Defines the go frequency change policy
+	 *
+	 * This controls the behavior of the GO when there is a change in the
+	 * map of the currently used frequencies in case that more than 1
+	 * channel is supported.
+	 *
+	 * @P2P_GO_FREQ_MOVE_SCM: prefer working in a single channel mode if
+	 * possible. In case the GO is the only interface using
+	 * its frequency and there are other station interfaces on other
+	 * frequencies, the GO will migrate to one of these frequencies.
+	 *
+	 * @P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS: same as P2P_GO_FREQ_MOVE_SCM,
+	 * but a transition is possible only in case that one of the other used
+	 * frequencies is one of the frequencies in the intersection of the
+	 * frequency list of the local device and the peer device.
+	 *
+	 * @P2P_GO_FREQ_MOVE_STAY: prefer to stay on the current frequency.
+	 */
+	enum {
+		P2P_GO_FREQ_MOVE_SCM = 0,
+		P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS = 1,
+		P2P_GO_FREQ_MOVE_STAY = 2,
+		P2P_GO_FREQ_MOVE_MAX = P2P_GO_FREQ_MOVE_STAY,
+
+	} p2p_go_freq_change_policy;
+
+#define DEFAULT_P2P_GO_FREQ_MOVE P2P_GO_FREQ_MOVE_SCM
+
+	/**
 	 * bss_max_count - Maximum number of BSS entries to keep in memory
 	 */
 	unsigned int bss_max_count;

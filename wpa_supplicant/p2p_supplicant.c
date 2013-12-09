@@ -45,6 +45,12 @@
 
 #define P2P_AUTO_PD_SCAN_ATTEMPTS 5
 
+/**
+ * Defines time interval when a GO needs to evacuate a frequency that it is
+ * currently using, but is not longer valid for P2P use cases.
+ */
+#define P2P_GO_FREQ_CHANGE_TIME 30
+
 #ifndef P2P_MAX_CLIENT_IDLE
 /*
  * How many seconds to try to reconnect to the GO when connection in P2P client
@@ -99,7 +105,8 @@ enum p2p_group_removal_reason {
 	P2P_GROUP_REMOVAL_UNAVAILABLE,
 	P2P_GROUP_REMOVAL_GO_ENDING_SESSION,
 	P2P_GROUP_REMOVAL_PSK_FAILURE,
-	P2P_GROUP_REMOVAL_FREQ_CONFLICT
+	P2P_GROUP_REMOVAL_FREQ_CONFLICT,
+	P2P_GROUP_REMOVAL_GO_LEAVE_CHANNEL
 };
 
 
@@ -121,10 +128,11 @@ static void wpas_p2p_set_group_idle_timeout(struct wpa_supplicant *wpa_s);
 static void wpas_p2p_group_formation_timeout(void *eloop_ctx,
 					     void *timeout_ctx);
 static void wpas_p2p_group_freq_conflict(void *eloop_ctx, void *timeout_ctx);
+
 static void wpas_p2p_fallback_to_go_neg(struct wpa_supplicant *wpa_s,
 					int group_added);
 static int wpas_p2p_stop_find_oper(struct wpa_supplicant *wpa_s);
-
+static void wpas_p2p_move_go(void *eloop_ctx, void *timeout_ctx);
 
 /*
  * Get the number of concurrent channels that the HW can operate, but that are
@@ -497,6 +505,8 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 			   "timeout");
 		wpa_s->p2p_in_provisioning = 0;
 	}
+
+	eloop_cancel_timeout(wpas_p2p_move_go, wpa_s, NULL);
 
 	/*
 	 * Make sure wait for the first client does not remain active after the
@@ -1349,6 +1359,7 @@ static void wpas_p2p_clone_config(struct wpa_supplicant *dst,
 	d->num_sec_device_types = s->num_sec_device_types;
 
 	d->p2p_group_idle = s->p2p_group_idle;
+	d->p2p_go_freq_change_policy = s->p2p_go_freq_change_policy;
 	d->p2p_intra_bss = s->p2p_intra_bss;
 	d->persistent_reconnect = s->persistent_reconnect;
 	d->max_num_sta = s->max_num_sta;
@@ -2862,6 +2873,29 @@ static int freq_included(const struct p2p_channels *channels, unsigned int freq)
 		return 1; /* Assume no restrictions */
 	return p2p_channels_includes_freq(channels, freq);
 
+}
+
+/*
+ * Check if the given frequency is one of the possible operating frequencies
+ * set after the completion of the GoN.
+ */
+static int wpas_p2p_go_is_peer_freq(struct wpa_supplicant *wpa_s, int freq)
+{
+	unsigned int i;
+	int *freq_list;
+
+	/* assume no restrictions */
+	if (!wpa_s->go_params)
+		return 1;
+
+	freq_list = wpa_s->go_params->freq_list;
+	for (i = 0; i < P2P_MAX_CHANNELS; i++) {
+		if (freq_list[i] == 0)
+			return 0;
+		if (freq_list[i] == freq)
+			return 1;
+	}
+	return 0;
 }
 
 /**
@@ -7158,6 +7192,171 @@ static void wpas_p2p_optimize_listen_channel(struct wpa_supplicant *wpa_s,
 		p2p_set_listen_channel(wpa_s->global->p2p, 81, cand, 0);
 }
 
+
+static int wpas_p2p_move_go_csa(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->csa_supported) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "CSA is not enabled");
+		return -1;
+	}
+
+	/* TODO: add csa support */
+	wpa_dbg(wpa_s, MSG_DEBUG, "Move GO with CSA is not implemented");
+	return -1;
+}
+
+static void wpas_p2p_move_go_no_csa(struct wpa_supplicant *wpa_s)
+{
+	struct p2p_go_neg_results params;
+	struct wpa_ssid *current_ssid = wpa_s->current_ssid;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Move GO from freq=%dMHz",
+		wpa_s->current_ssid->frequency);
+
+	/* Stop the AP functionality  */
+	wpa_supplicant_ap_deinit(wpa_s);
+
+	/* Reselect the GO frequency */
+	if (wpas_p2p_init_go_params(wpa_s, &params, 0, 0, 0, NULL)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Failed to reselect freq.");
+		wpas_p2p_group_delete(wpa_s,
+				      P2P_GROUP_REMOVAL_GO_LEAVE_CHANNEL);
+		return;
+	}
+	wpa_dbg(wpa_s, MSG_DEBUG, "New freq selected for the GO (%u MHz)",
+		params.freq);
+
+	if (params.freq &&
+	    !p2p_supported_freq_go(wpa_s->global->p2p, params.freq)) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: selected freq (%u MHz) is not valid for P2P",
+			   params.freq);
+		wpas_p2p_group_delete(wpa_s,
+				      P2P_GROUP_REMOVAL_GO_LEAVE_CHANNEL);
+		return;
+	}
+
+	/* Update the frequency */
+	current_ssid->frequency = params.freq;
+	wpa_s->connect_without_scan = current_ssid;
+	wpa_s->reassociate = 1;
+	wpa_s->disconnected = 0;
+	wpa_supplicant_req_scan(wpa_s, 0, 0);
+}
+
+static void wpas_p2p_move_go(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+
+	if (!wpa_s->ap_iface || !wpa_s->current_ssid)
+		return;
+
+	/*
+	 * first try a channel switch flow, if it is not supported or fails,
+	 * perform take down the GO and bring it up again
+	 */
+	if (wpas_p2p_move_go_csa(wpa_s) < 0)
+		wpas_p2p_move_go_no_csa(wpa_s);
+}
+
+/*
+ * Consider moving a GO from its currently used frequency:
+ * 1. It is possible that due to regulatory consideration the frequency
+ *    can no longer be used and there is a need to evacuate the GO.
+ * 2. It is possible that due to MCC considerations, it would be preferable
+ *    to move the GO to a channel that is currently used by some other
+ *    station interface.
+ *
+ * In case that a frequency that became invalid, is once again valid,
+ * cancel a previously initiated GO frequency change.
+ */
+static void wpas_p2p_consider_moving_one_go(struct wpa_supplicant *wpa_s,
+					    struct wpa_used_freq_data *freqs,
+					    unsigned int num)
+{
+	unsigned int i, invalid_freq = 0, policy_move = 0, flags = 0;
+	unsigned int timeout;
+	int freq;
+
+	freq = wpa_s->current_ssid->frequency;
+	for (i = 0, invalid_freq = 0; i < num; i++) {
+		if (freqs[i].freq == freq) {
+			flags = freqs[i].flags;
+
+			/* The channel is invalid, must change it */
+			if (!p2p_supported_freq(wpa_s->global->p2p, freq)) {
+				wpa_dbg(wpa_s, MSG_DEBUG,
+					"Freq=%dMHz not longer valid for GO",
+					freq);
+				invalid_freq = 1;
+			}
+		} else if (freqs[i].flags == 0) {
+			/* freq is not used by any other station interface */
+			continue;
+		} else if (!p2p_supported_freq(wpa_s->global->p2p,
+					       freqs[i].freq)) {
+			/* freq is not valid for P2P use cases  */
+			continue;
+		} else if (wpa_s->conf->p2p_go_freq_change_policy ==
+			   P2P_GO_FREQ_MOVE_SCM) {
+			policy_move = 1;
+		} else if ((wpa_s->conf->p2p_go_freq_change_policy ==
+			    P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS) &&
+			   wpas_p2p_go_is_peer_freq(wpa_s, freqs[i].freq)) {
+			policy_move = 1;
+		}
+	}
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"GO move: invalid_freq=%u, policy_move=%u, flags=0x%X",
+		invalid_freq, policy_move, flags);
+
+	/* The channel is valid, or we are going to have a policy move, so
+	 * cancel timeout */
+	if (invalid_freq == 0 || policy_move == 1) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Cancel a GO move from freq=%dMHz",
+			freq);
+		eloop_cancel_timeout(wpas_p2p_move_go, wpa_s, NULL);
+	}
+
+	if (invalid_freq == 0 && (policy_move == 0 || flags != 0)) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Not initiating a GO frequency change");
+		return;
+	}
+
+	if (invalid_freq)
+		timeout = P2P_GO_FREQ_CHANGE_TIME;
+	if (policy_move)
+		timeout = 0;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Move GO from freq=%dMHz in %d secs",
+		freq, timeout);
+	eloop_register_timeout(timeout, 0, wpas_p2p_move_go, wpa_s, NULL);
+	return;
+}
+
+static void wpas_p2p_consider_moving_gos(struct wpa_supplicant *wpa_s,
+					 struct wpa_used_freq_data *freqs,
+					 unsigned int num)
+{
+	struct wpa_supplicant *ifs;
+
+	/* Travers all the radio interfaces, and for each GO interface, check
+	 * if there is a need to  move the GO from the frequency it is using,
+	 * or in case that the frequency is valid again, cancel the
+	 * evacuation flow
+	 */
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (ifs->current_ssid == NULL ||
+		    ifs->current_ssid->mode != WPAS_MODE_P2P_GO)
+			continue;
+
+		wpas_p2p_consider_moving_one_go(ifs, freqs, num);
+	}
+}
+
 void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_used_freq_data *freqs = NULL;
@@ -7188,5 +7387,12 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
 
 	wpas_p2p_optimize_listen_channel(wpa_s, freqs, num);
+
+	/* The used frequencies map changed, so it is possible that a GO is
+	 * using an channel that is no longer valid for P2P use, or it is also
+	 * possible that due to policy consideration, it would preferable to
+	 * move it to a frequency already used by other station interfaces */
+	wpas_p2p_consider_moving_gos(wpa_s, freqs, num);
+
 	os_free(freqs);
 }
