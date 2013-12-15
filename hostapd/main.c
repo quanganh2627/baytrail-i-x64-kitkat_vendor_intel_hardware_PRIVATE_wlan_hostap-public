@@ -223,6 +223,7 @@ static int hostapd_driver_init(struct hostapd_iface *iface)
 		iface->extended_capa_mask = capa.extended_capa_mask;
 		iface->extended_capa_len = capa.extended_capa_len;
 		iface->drv_max_acl_mac_addrs = capa.max_acl_mac_addrs;
+		iface->csa_supported = !!(capa.flags & WPA_DRIVER_FLAGS_AP_CSA);
 	}
 
 	return 0;

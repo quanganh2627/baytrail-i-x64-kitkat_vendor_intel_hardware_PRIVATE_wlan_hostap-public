@@ -767,6 +767,8 @@ struct wpa_supplicant {
 #endif /* CONFIG_TESTING_GET_GTK */
 
 	unsigned int num_multichan_concurrent;
+
+	unsigned int csa_supported:1;
 };
 
 

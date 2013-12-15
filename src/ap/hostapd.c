@@ -2231,6 +2231,14 @@ int hostapd_switch_channel(struct hostapd_data *hapd,
 			   struct csa_settings *settings)
 {
 	int ret;
+	if (!hapd->iface)
+		return -1;
+
+	if (!hapd->iface->csa_supported) {
+		wpa_printf(MSG_ERROR, "CSA is not supported");
+		return -1;
+	}
+
 	ret = hostapd_fill_csa_settings(hapd->iface, settings);
 	if (ret)
 		return ret;

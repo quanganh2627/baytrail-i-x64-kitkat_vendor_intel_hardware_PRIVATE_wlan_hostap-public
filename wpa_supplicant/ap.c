@@ -652,6 +652,7 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 	hapd_iface->extended_capa = wpa_s->extended_capa;
 	hapd_iface->extended_capa_mask = wpa_s->extended_capa_mask;
 	hapd_iface->extended_capa_len = wpa_s->extended_capa_len;
+	hapd_iface->csa_supported = wpa_s->csa_supported;
 
 	wpa_s->ap_iface->conf = conf = hostapd_config_defaults();
 	if (conf == NULL) {
