@@ -33,6 +33,7 @@
 #include "offchannel.h"
 #include "wps_supplicant.h"
 #include "p2p_supplicant.h"
+#include "wifi_display.h"
 
 
 /*
@@ -97,9 +98,7 @@ enum p2p_group_removal_reason {
 	P2P_GROUP_REMOVAL_UNAVAILABLE,
 	P2P_GROUP_REMOVAL_GO_ENDING_SESSION,
 	P2P_GROUP_REMOVAL_PSK_FAILURE,
-#ifdef ANDROID_P2P
 	P2P_GROUP_REMOVAL_FREQ_CONFLICT
-#endif
 };
 
 
@@ -119,9 +118,7 @@ static void wpas_p2p_group_idle_timeout(void *eloop_ctx, void *timeout_ctx);
 static void wpas_p2p_set_group_idle_timeout(struct wpa_supplicant *wpa_s);
 static void wpas_p2p_group_formation_timeout(void *eloop_ctx,
 					     void *timeout_ctx);
-#ifdef ANDROID_P2P
 static void wpas_p2p_group_freq_conflict(void *eloop_ctx, void *timeout_ctx);
-#endif
 static void wpas_p2p_fallback_to_go_neg(struct wpa_supplicant *wpa_s,
 					int group_added);
 static int wpas_p2p_stop_find_oper(struct wpa_supplicant *wpa_s);
@@ -438,11 +435,9 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 	case P2P_GROUP_REMOVAL_PSK_FAILURE:
 		reason = " reason=PSK_FAILURE";
 		break;
-#ifdef ANDROID_P2P
 	case P2P_GROUP_REMOVAL_FREQ_CONFLICT:
 		reason = " reason=FREQ_CONFLICT";
 		break;
-#endif
 	default:
 		reason = "";
 		break;
@@ -453,9 +448,8 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 			       wpa_s->ifname, gtype, reason);
 	}
 
-#ifdef ANDROID_P2P
-	eloop_cancel_timeout(wpas_p2p_group_freq_conflict, wpa_s, NULL);
-#endif
+	if (eloop_cancel_timeout(wpas_p2p_group_freq_conflict, wpa_s, NULL) > 0)
+		wpa_printf(MSG_DEBUG, "P2P: Cancelled P2P group freq_conflict timeout");
 	if (eloop_cancel_timeout(wpas_p2p_group_idle_timeout, wpa_s, NULL) > 0)
 		wpa_printf(MSG_DEBUG, "P2P: Cancelled P2P group idle timeout");
 	if (eloop_cancel_timeout(wpas_p2p_group_formation_timeout,
@@ -1457,16 +1451,13 @@ void wpas_dev_found(void *ctx, const u8 *addr,
 #ifndef CONFIG_NO_STDOUT_DEBUG
 	struct wpa_supplicant *wpa_s = ctx;
 	char devtype[WPS_DEV_TYPE_BUFSIZE];
-#define WFD_DEV_INFO_SIZE 9
-	char wfd_dev_info_hex[2 * WFD_DEV_INFO_SIZE + 1];
-	os_memset(wfd_dev_info_hex, 0, sizeof(wfd_dev_info_hex));
+	char *wfd_dev_info_hex = NULL;
+
 #ifdef CONFIG_WIFI_DISPLAY
-	if (info->wfd_subelems) {
-		wpa_snprintf_hex(wfd_dev_info_hex, sizeof(wfd_dev_info_hex),
-					wpabuf_head(info->wfd_subelems),
-					WFD_DEV_INFO_SIZE);
-	}
+	wfd_dev_info_hex = wifi_display_subelem_hex(info->wfd_subelems,
+						    WFD_SUBELEM_DEVICE_INFO);
 #endif /* CONFIG_WIFI_DISPLAY */
+
 	wpa_msg_global(wpa_s, MSG_INFO, P2P_EVENT_DEVICE_FOUND MACSTR
 		       " p2p_dev_addr=" MACSTR
 		       " pri_dev_type=%s name='%s' config_methods=0x%x "
@@ -1476,8 +1467,11 @@ void wpas_dev_found(void *ctx, const u8 *addr,
 					    sizeof(devtype)),
 		       info->device_name, info->config_methods,
 		       info->dev_capab, info->group_capab,
-		       wfd_dev_info_hex[0] ? " wfd_dev_info=0x" : "", wfd_dev_info_hex);
+		       wfd_dev_info_hex ? " wfd_dev_info=0x" : "",
+		       wfd_dev_info_hex ? wfd_dev_info_hex : "");
 #endif /* CONFIG_NO_STDOUT_DEBUG */
+
+	os_free(wfd_dev_info_hex);
 
 	wpas_notify_p2p_device_found(ctx, info->p2p_device_addr, new_device);
 }
@@ -3647,15 +3641,13 @@ void wpas_p2p_deinit(struct wpa_supplicant *wpa_s)
 
 	os_free(wpa_s->go_params);
 	wpa_s->go_params = NULL;
-#ifdef ANDROID_P2P
-	eloop_cancel_timeout(wpas_p2p_group_freq_conflict, wpa_s, NULL);
-#endif
 	eloop_cancel_timeout(wpas_p2p_group_formation_timeout, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_join_scan, wpa_s, NULL);
 	wpa_s->p2p_long_listen = 0;
 	eloop_cancel_timeout(wpas_p2p_long_listen_timeout, wpa_s, NULL);
 	eloop_cancel_timeout(wpas_p2p_group_idle_timeout, wpa_s, NULL);
 	wpas_p2p_remove_pending_group_interface(wpa_s);
+	eloop_cancel_timeout(wpas_p2p_group_freq_conflict, wpa_s, NULL);
 
 	/* TODO: remove group interface from the driver if this wpa_s instance
 	 * is on top of a P2P group interface */
@@ -4059,17 +4051,7 @@ static void wpas_p2p_join_scan_req(struct wpa_supplicant *wpa_s, int freq)
 	struct wpabuf *wps_ie, *ies;
 	size_t ielen;
 	int freqs[2] = { 0, 0 };
-#ifdef ANDROID_P2P
-	int oper_freq;
 
-	/* If freq is not provided, check the operating freq of the GO and do a
-	 * a directed scan to save time
-	 */
-	if(!freq) {
-		freq = (oper_freq = p2p_get_oper_freq(wpa_s->global->p2p,
-			 wpa_s->pending_join_iface_addr) == -1) ? 0 : oper_freq; 
-	}
-#endif
 	os_memset(&params, 0, sizeof(params));
 
 	/* P2P Wildcard SSID */
@@ -6673,6 +6655,63 @@ static void wpas_p2p_psk_failure_removal(void *eloop_ctx, void *timeout_ctx)
 }
 
 
+static void wpas_p2p_group_freq_conflict(void *eloop_ctx, void *timeout_ctx)
+{
+	struct wpa_supplicant *wpa_s = eloop_ctx;
+
+	wpa_printf(MSG_DEBUG, "P2P: Frequency conflict - terminate group");
+	wpas_p2p_group_delete(wpa_s, P2P_GROUP_REMOVAL_FREQ_CONFLICT);
+}
+
+
+int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s, int freq,
+					struct wpa_ssid *ssid)
+{
+	struct wpa_supplicant *iface;
+
+	for (iface = wpa_s->global->ifaces; iface; iface = iface->next) {
+		if (!iface->current_ssid ||
+		    iface->current_ssid->frequency == freq ||
+		    (iface->p2p_group_interface == NOT_P2P_GROUP_INTERFACE &&
+		     !iface->current_ssid->p2p_group))
+			continue;
+
+		/* Remove the connection with least priority */
+		if (!wpas_is_p2p_prioritized(iface)) {
+			/* STA connection has priority over existing
+			 * P2P connection, so remove the interface. */
+			wpa_printf(MSG_DEBUG, "P2P: Removing P2P connection due to single channel concurrent mode frequency conflict");
+			eloop_register_timeout(0, 0,
+					       wpas_p2p_group_freq_conflict,
+					       iface, NULL);
+			/* If connection in progress is P2P connection, do not
+			 * proceed for the connection. */
+			if (wpa_s == iface)
+				return -1;
+			else
+				return 0;
+		} else {
+			/* P2P connection has priority, disable the STA network
+			 */
+			wpa_supplicant_disable_network(wpa_s->global->ifaces,
+						       ssid);
+			wpa_msg(wpa_s->global->ifaces, MSG_INFO,
+				WPA_EVENT_FREQ_CONFLICT " id=%d", ssid->id);
+			os_memset(wpa_s->global->ifaces->pending_bssid, 0,
+				  ETH_ALEN);
+			/* If P2P connection is in progress, continue
+			 * connecting...*/
+			if (wpa_s == iface)
+				return 0;
+			else
+				return -1;
+		}
+	}
+
+	return 0;
+}
+
+
 int wpas_p2p_4way_hs_failed(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_ssid *ssid = wpa_s->current_ssid;
@@ -6741,82 +6780,3 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 		os_free(freqs);
 	}
 }
-
-#ifdef ANDROID_P2P
-static void wpas_p2p_group_freq_conflict(void *eloop_ctx, void *timeout_ctx)
-{
-	struct wpa_supplicant *wpa_s = eloop_ctx;
-
-	wpa_printf(MSG_DEBUG, "P2P: Frequency conflict - terminate group");
-	wpas_p2p_group_delete(wpa_s, P2P_GROUP_REMOVAL_FREQ_CONFLICT);
-}
-
-int wpas_p2p_handle_frequency_conflicts(struct wpa_supplicant *wpa_s, int freq,
-	struct wpa_ssid *ssid)
-{
-	struct wpa_supplicant *iface = NULL;
-	struct p2p_data *p2p = wpa_s->global->p2p;
-
-	for (iface = wpa_s->global->ifaces; iface; iface = iface->next) {
-		if ((iface->current_ssid) &&
-		    (iface->current_ssid->frequency != freq) &&
-		    ((iface->p2p_group_interface) ||
-		     (iface->current_ssid->p2p_group))) {
-
-#if 0
-			/* FIX: wpa_drv_switch_channel() returns -1 always in
-			 * the AOSP release version since switch_channel() is
-			 * not implemented. As such, this is dead code..
-			 * Commenting this out for now since
-			 * wpa_drv_switch_channel() is not up-to-date with the
-			 * driver interface anymore.
-			 */
-			if ((iface->p2p_group_interface == P2P_GROUP_INTERFACE_GO)  ||
-			    (iface->current_ssid->mode == WPAS_MODE_P2P_GO)) {
-				/* Try to see whether we can move the GO. If it
-				 * is not possible, remove the GO interface
-				 */
-				if (wpa_drv_switch_channel(iface, freq) == 0) {
-					wpa_printf(MSG_ERROR, "P2P: GO Moved to freq(%d)", freq);
-					iface->current_ssid->frequency = freq;
-					continue;
-				}
-			}
-#endif
-
-			/* If GO cannot be moved or if the conflicting interface is a
-			 * P2P Client, remove the interface depending up on the connection
-			 * priority */
-			if(!wpas_is_p2p_prioritized(iface)) {
-				/* STA connection has priority over existing
-				 * P2P connection. So remove the interface */
-				wpa_printf(MSG_DEBUG, "P2P: Removing P2P connection due to Single channel"
-						"concurrent mode frequency conflict");
-				eloop_register_timeout(0, 0, wpas_p2p_group_freq_conflict,
-						       iface, NULL);
-				/* If connection in progress is p2p connection, do not proceed for the connection */
-				if (wpa_s == iface)
-					return -1;
-				else
-					/* If connection in progress is STA connection, proceed for the connection */
-					return 0;
-			} else {
-				/* P2p connection has priority, disable the STA network*/
-				wpa_supplicant_disable_network(wpa_s->global->ifaces, ssid);
-				wpa_msg(wpa_s->global->ifaces, MSG_INFO, WPA_EVENT_FREQ_CONFLICT
-					" id=%d", ssid->id);
-				os_memset(wpa_s->global->ifaces->pending_bssid, 0, ETH_ALEN);
-				if (wpa_s == iface) {
-					/* p2p connection is in progress, continue connecting...*/
-					return 0;
-				}
-				else {
-					/* STA connection is in progress, do not allow to continue */
-					return -1;
-				}
-			}
-		}
-	}
-	return 0;
-}
-#endif
