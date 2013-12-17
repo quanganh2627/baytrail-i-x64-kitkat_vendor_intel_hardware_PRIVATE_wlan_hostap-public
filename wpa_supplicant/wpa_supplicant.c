@@ -3352,6 +3352,13 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 			wpa_s->conf->driver_param =
 				os_strdup(iface->driver_param);
 		}
+
+#ifndef ANDROID422
+		if (iface->p2p_mgmt && !iface->ctrl_interface) {
+			os_free(wpa_s->conf->ctrl_interface);
+			wpa_s->conf->ctrl_interface = NULL;
+		}
+#endif
 	} else
 		wpa_s->conf = wpa_config_alloc_empty(iface->ctrl_interface,
 						     iface->driver_param);
