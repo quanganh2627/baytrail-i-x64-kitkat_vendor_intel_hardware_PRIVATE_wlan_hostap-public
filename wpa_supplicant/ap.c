@@ -467,6 +467,29 @@ static void wpas_ap_configured_cb(void *ctx)
 					wpa_s->ap_configured_cb_data);
 }
 
+static void wpas_get_bss_beacon_interval(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_supplicant *ifs;
+
+	/* Find a managed interface that is also associated */
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (ifs == wpa_s)
+			continue;
+
+		if ((ifs->current_ssid == NULL) || (ifs->assoc_freq == 0) ||
+		    (ifs->current_ssid->mode != WPAS_MODE_INFRA) ||
+		    (ifs->current_bss == NULL))
+			continue;
+
+		wpa_printf(MSG_DEBUG,
+			   "use the beacon interval from bss interface=%s",
+			   ifs->ifname);
+
+		wpa_s->conf->beacon_int = ifs->current_bss->beacon_int;
+		return;
+	}
+}
 
 static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 {
@@ -668,6 +691,10 @@ int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 			  wpa_s->conf->wmm_ac_params,
 			  sizeof(wpa_s->conf->wmm_ac_params));
 	}
+
+	/* In case that another station interface is currently active, use its
+	 * BSS beacon interval, as the new AP beacon interval */
+	wpas_get_bss_beacon_interval(wpa_s);
 
 	if (params.uapsd > 0) {
 		conf->bss[0]->wmm_enabled = 1;
