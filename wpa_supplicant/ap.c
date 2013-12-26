@@ -478,7 +478,8 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 	int i;
 
 	/* Find a managed interface that is also associated */
-	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
 		if (ifs == wpa_s)
 			continue;
 
