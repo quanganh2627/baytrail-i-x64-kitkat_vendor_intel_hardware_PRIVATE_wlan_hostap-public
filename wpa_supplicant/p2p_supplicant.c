@@ -1467,7 +1467,12 @@ void wpas_dev_found(void *ctx, const u8 *addr,
 					    sizeof(devtype)),
 		       info->device_name, info->config_methods,
 		       info->dev_capab, info->group_capab,
+#ifdef ANDROID_P2P
+		       /* android expects the length (6) at the beginning */
+		       wfd_dev_info_hex ? " wfd_dev_info=0x000006" : "",
+#else
 		       wfd_dev_info_hex ? " wfd_dev_info=0x" : "",
+#endif
 		       wfd_dev_info_hex ? wfd_dev_info_hex : "");
 #endif /* CONFIG_NO_STDOUT_DEBUG */
 
