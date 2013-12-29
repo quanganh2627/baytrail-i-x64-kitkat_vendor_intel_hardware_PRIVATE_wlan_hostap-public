@@ -503,6 +503,8 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 	/* Find a managed interface that is also associated */
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
+		wmm_ie = NULL;
+
 		if (ifs == wpa_s)
 			continue;
 
@@ -535,7 +537,7 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 		break;
 	}
 
-	if (!ifs)
+	if (!wmm_ie)
 		return -1;
 
 	wpa_printf(MSG_DEBUG, "use the WMM parameters from bss interface=%s",
