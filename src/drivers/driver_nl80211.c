@@ -363,14 +363,6 @@ static int android_pno_stop(struct i802_bss *bss);
 static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len);
 #endif /* ANDROID */
-#ifdef ANDROID_P2P
-int wpa_driver_set_p2p_noa(void *priv, u8 count, int start, int duration);
-int wpa_driver_get_p2p_noa(void *priv, u8 *buf, size_t len);
-int wpa_driver_set_p2p_ps(void *priv, int legacy_ps, int opp_ps, int ctwindow);
-int wpa_driver_set_ap_wps_p2p_ie(void *priv, const struct wpabuf *beacon,
-				 const struct wpabuf *proberesp,
-				 const struct wpabuf *assocresp);
-#endif /* ANDROID_P2P */
 
 static void add_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx);
 static void del_ifidx(struct wpa_driver_nl80211_data *drv, int ifidx);
@@ -10677,11 +10669,7 @@ static int nl80211_set_p2p_powersave(void *priv, int legacy_ps, int opp_ps,
 		   "opp_ps=%d ctwindow=%d)", legacy_ps, opp_ps, ctwindow);
 
 	if (opp_ps != -1 || ctwindow != -1) {
-#ifdef ANDROID_P2P
-		wpa_driver_set_p2p_ps(priv, legacy_ps, opp_ps, ctwindow);
-#else /* ANDROID_P2P */
 		return -1; /* Not yet supported */
-#endif /* ANDROID_P2P */
 	}
 
 	if (legacy_ps == -1)
@@ -11140,6 +11128,34 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 	}
 
 	return ret;
+}
+
+
+static int wpa_driver_nl80211_get_p2p_noa(void *priv, u8 *buf, size_t len)
+{
+#define UNUSED(_x) (void)(_x)
+	UNUSED(priv);
+#undef UNUSED
+
+	wpa_printf(MSG_DEBUG, "nl80211: get_p2p_noa is not supported");
+	memset(buf, 0, len);
+	return 0;
+}
+
+static int wpa_driver_nl80211_set_ap_wps_p2p_ie(void *priv,
+						const struct wpabuf *beacon,
+						const struct wpabuf *proberesp,
+						const struct wpabuf *assocresp)
+{
+#define UNUSED(_x) (void)(_x)
+	UNUSED(priv);
+	UNUSED(beacon);
+	UNUSED(proberesp);
+	UNUSED(assocresp);
+#undef UNUSED
+
+	wpa_printf(MSG_DEBUG, "nl80211: set_ap_wps_p2p_ie is not supported");
+	return 0;
 }
 #endif /* ANDROID */
 
@@ -11652,12 +11668,9 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.get_survey = wpa_driver_nl80211_get_survey,
 	.status = wpa_driver_nl80211_status,
 	.switch_channel = nl80211_switch_channel,
-#ifdef ANDROID_P2P
-	.set_noa = wpa_driver_set_p2p_noa,
-	.get_noa = wpa_driver_get_p2p_noa,
-	.set_ap_wps_ie = wpa_driver_set_ap_wps_p2p_ie,
-#endif /* ANDROID_P2P */
 #ifdef ANDROID
+	.get_noa = wpa_driver_nl80211_get_p2p_noa,
+	.set_ap_wps_ie = wpa_driver_nl80211_set_ap_wps_p2p_ie,
 	.driver_cmd = wpa_driver_nl80211_driver_cmd,
 #endif /* ANDROID */
 };
