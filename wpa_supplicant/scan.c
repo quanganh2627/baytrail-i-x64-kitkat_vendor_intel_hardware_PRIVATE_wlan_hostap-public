@@ -1615,12 +1615,13 @@ static void filter_scan_res(struct wpa_supplicant *wpa_s,
 {
 	size_t i, j;
 
-	if (wpa_s->bssid_filter == NULL)
+	if (wpa_s->bssid_filter == NULL && wpa_s->setband == WPA_SETBAND_AUTO)
 		return;
 
 	for (i = 0, j = 0; i < res->num; i++) {
 		if (wpa_supplicant_filter_bssid_match(wpa_s,
-						      res->res[i]->bssid)) {
+						      res->res[i]->bssid) &&
+		    wpas_freq_in_current_band(wpa_s, res->res[i]->freq)) {
 			res->res[j++] = res->res[i];
 		} else {
 			os_free(res->res[i]);

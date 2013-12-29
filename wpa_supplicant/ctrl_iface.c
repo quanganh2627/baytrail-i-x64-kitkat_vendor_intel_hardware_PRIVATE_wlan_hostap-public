@@ -5242,23 +5242,27 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 {
 	int ret;
 
-	ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
-	if (ret == 0) {
-		if (os_strncasecmp(cmd, "COUNTRY", 7) == 0) {
-			struct p2p_data *p2p = wpa_s->global->p2p;
-			if (p2p) {
-				char country[3];
-				country[0] = cmd[8];
-				country[1] = cmd[9];
-				country[2] = 0x04;
-				p2p_set_country(p2p, country);
-			}
-		} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
-			wpa_supplicant_miracast(wpa_s, atoi(cmd + 9));
+	if (os_strncasecmp(cmd, "SETBAND ", 8) == 0) {
+		int band = atoi(cmd + 8);
+		ret = wpas_setband(wpa_s, band);
+	} else {
+		ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
+		if (ret == 0) {
+			if (os_strncasecmp(cmd, "COUNTRY", 7) == 0) {
+				struct p2p_data *p2p = wpa_s->global->p2p;
+				if (p2p) {
+					char country[3];
+					country[0] = cmd[8];
+					country[1] = cmd[9];
+					country[2] = 0x04;
+					p2p_set_country(p2p, country);
+				}
+			} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
+				wpa_supplicant_miracast(wpa_s, atoi(cmd + 9));
 		}
-
-		ret = os_snprintf(buf, buflen, "%s\n", "OK");
 	}
+
+	ret = os_snprintf(buf, buflen, "%s\n", ret ? "FAIL" : "OK");
 	return ret;
 }
 #endif /* ANDROID */

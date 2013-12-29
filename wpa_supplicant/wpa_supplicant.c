@@ -4532,3 +4532,73 @@ int get_shared_radio_freqs(struct wpa_supplicant *wpa_s,
 	return num;
 }
 
+/*
+ * wpas_freq_in_current_band - check if the given frequency is in the
+ * current band
+ *
+ * Using 2412 - 2484Mhz range for 2G and 4915 - 5825Mhz range for 5G
+ */
+int wpas_freq_in_current_band(struct wpa_supplicant *wpa_s, int freq)
+{
+	if ((wpa_s->setband == WPA_SETBAND_2G &&
+	    (freq < 2412 || freq > 2484)) ||
+	    (wpa_s->setband == WPA_SETBAND_5G && (freq < 4915 || freq > 5825)))
+			return 0;
+
+	return 1;
+}
+
+/*
+ * wpas_setband - force the use of a specific band
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @band: Which band to use: 0 - 2G and 5G, 1 - 5G, 2 - 2G
+ *
+ * This function will try to connect to the prefered network even if it is
+ * already connected to another network in the selected band.
+ *
+ * This action is not permitted for p2p device or ap/go interface.
+ */
+int wpas_setband(struct wpa_supplicant *wpa_s, int band)
+{
+	if (wpa_s->p2p_mgmt) {
+		wpa_printf(MSG_DEBUG,
+			   "SETBAND is not permitted for p2p device");
+		return -EPERM;
+	}
+
+#ifdef CONFIG_AP
+	if (wpa_s->ap_iface) {
+		wpa_printf(MSG_DEBUG,
+			   "SETBAND is not permitted for AP/GO interface");
+		return -EPERM;
+	}
+#endif
+
+	wpa_printf(MSG_DEBUG, "SETBAND: %d", band);
+	switch (band) {
+	case 0:
+		wpa_s->setband = WPA_SETBAND_AUTO;
+		break;
+	case 1:
+		wpa_s->setband = WPA_SETBAND_5G;
+		break;
+	case 2:
+		wpa_s->setband = WPA_SETBAND_2G;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/*
+	 * disconnect if connected to a bss that is not in
+	 * the selected band
+	 */
+	if (wpa_s->current_bss &&
+	    !wpas_freq_in_current_band(wpa_s, wpa_s->current_bss->freq))
+		wpa_supplicant_disable_network(wpa_s, wpa_s->current_ssid);
+
+	wpa_bss_flush(wpa_s);
+	wpa_supplicant_select_network(wpa_s, NULL);
+
+	return 0;
+}

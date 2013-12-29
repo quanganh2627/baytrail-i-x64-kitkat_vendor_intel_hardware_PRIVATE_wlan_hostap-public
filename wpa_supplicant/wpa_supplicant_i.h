@@ -988,5 +988,7 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 				unsigned int len);
 int get_shared_radio_freqs(struct wpa_supplicant *wpa_s,
 			   int *freq_array, unsigned int len);
+int wpas_freq_in_current_band(struct wpa_supplicant *wpa_s, int freq);
+int wpas_setband(struct wpa_supplicant *wpa_s, int band);
 
 #endif /* WPA_SUPPLICANT_I_H */
