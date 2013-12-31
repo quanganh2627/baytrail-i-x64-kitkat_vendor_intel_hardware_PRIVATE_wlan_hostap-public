@@ -531,8 +531,12 @@ static int is_sta_interface(enum nl80211_iftype nlmode)
 
 static int is_p2p_net_interface(enum nl80211_iftype nlmode)
 {
+#ifndef CONFIG_WCD_WA_FORCE_OFDM_RATE
 	return (nlmode == NL80211_IFTYPE_P2P_CLIENT ||
 		nlmode == NL80211_IFTYPE_P2P_GO);
+#else
+	return 1;
+#endif
 }
 
 
@@ -9661,8 +9665,13 @@ static int nl80211_send_frame_cmd(struct i802_bss *bss,
 		NLA_PUT_U32(msg, NL80211_ATTR_DURATION, wait);
 	if (offchanok && (drv->capa.flags & WPA_DRIVER_FLAGS_OFFCHANNEL_TX))
 		NLA_PUT_FLAG(msg, NL80211_ATTR_OFFCHANNEL_TX_OK);
+#ifndef CONFIG_WCD_WA_FORCE_OFDM_RATE
 	if (no_cck)
 		NLA_PUT_FLAG(msg, NL80211_ATTR_TX_NO_CCK_RATE);
+#else
+	/* Force OFDM rates */
+	NLA_PUT_FLAG(msg, NL80211_ATTR_TX_NO_CCK_RATE);
+#endif
 	if (no_ack)
 		NLA_PUT_FLAG(msg, NL80211_ATTR_DONT_WAIT_FOR_ACK);
 

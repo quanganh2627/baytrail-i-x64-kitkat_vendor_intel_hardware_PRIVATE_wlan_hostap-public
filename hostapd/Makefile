@@ -793,6 +793,10 @@ ifdef NEED_BASE64
 OBJS += ../src/utils/base64.o
 endif
 
+ifdef
+CFLAGS += -DCONFIG_WCD_WA_FORCE_OFDM_RATE
+endif
+
 ifdef NEED_AP_MLME
 OBJS += ../src/ap/wmm.o
 OBJS += ../src/ap/ap_list.o
