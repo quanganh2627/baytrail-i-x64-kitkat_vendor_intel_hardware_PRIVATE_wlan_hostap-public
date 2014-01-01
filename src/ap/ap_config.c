@@ -60,7 +60,7 @@ void hostapd_config_defaults_bss(struct hostapd_bss_config *bss)
 
 	bss->max_num_sta = MAX_STA_COUNT;
 
-	bss->dtim_period = 2;
+	bss->dtim_period = 3;
 
 	bss->radius_server_auth_port = 1812;
 	bss->ap_max_inactivity = AP_MAX_INACTIVITY;
