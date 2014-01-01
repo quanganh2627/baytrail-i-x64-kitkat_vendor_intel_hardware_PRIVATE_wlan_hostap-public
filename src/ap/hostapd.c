@@ -2304,6 +2304,8 @@ static int hostapd_fill_csa_settings(struct hostapd_iface *iface,
 
 	settings->counter_offset_beacon[0] = iface->cs_c_off_beacon;
 	settings->counter_offset_presp[0] = iface->cs_c_off_proberesp;
+	settings->counter_offset_beacon[1] = iface->cs_c_off_ecsa_beacon;
+	settings->counter_offset_presp[1] = iface->cs_c_off_ecsa_proberesp;
 
 	return 0;
 }
@@ -2318,6 +2320,8 @@ void hostapd_cleanup_cs_params(struct hostapd_data *hapd)
 	hapd->iface->cs_c_off_beacon = 0;
 	hapd->iface->cs_c_off_proberesp = 0;
 	hapd->iface->csa_in_progress = 0;
+	hapd->iface->cs_c_off_ecsa_beacon = 0;
+	hapd->iface->cs_c_off_ecsa_proberesp = 0;
 }
 
 

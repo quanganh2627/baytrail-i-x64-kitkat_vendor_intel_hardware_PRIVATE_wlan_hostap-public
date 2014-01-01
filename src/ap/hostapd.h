@@ -345,8 +345,12 @@ struct hostapd_iface {
 	struct hostapd_freq_params cs_freq_params;
 	u8 cs_count;
 	int cs_block_tx;
+	/* eCSA IE will be added only if operating class is specified */
+	u8 cs_oper_class;
 	unsigned int cs_c_off_beacon;
 	unsigned int cs_c_off_proberesp;
+	unsigned int cs_c_off_ecsa_beacon;
+	unsigned int cs_c_off_ecsa_proberesp;
 	int csa_in_progress;
 	unsigned int csa_supported:1;
 
