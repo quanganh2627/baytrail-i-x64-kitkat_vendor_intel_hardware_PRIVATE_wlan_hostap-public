@@ -36,22 +36,8 @@ ifdef CONFIG_NO_ROAMING
 L_CFLAGS += -DCONFIG_NO_ROAMING
 endif
 
-ifeq ($(BOARD_WLAN_DEVICE), bcmdhd)
+# Enable Android specific flows
 L_CFLAGS += -DANDROID_P2P
-L_CFLAGS += -DP2P_CONCURRENT_SEARCH_DELAY=0
-endif
-
-ifeq ($(BOARD_WLAN_DEVICE), qcwcn)
-L_CFLAGS += -DANDROID_P2P
-endif
-
-ifeq ($(BOARD_WLAN_DEVICE), mrvl)
-L_CFLAGS += -DANDROID_P2P
-endif
-
-ifeq ($(BOARD_WLAN_DEVICE), intc)
-L_CFLAGS += -DANDROID_P2P
-endif
 
 # Use Android specific directory for control interface sockets
 L_CFLAGS += -DCONFIG_CTRL_IFACE_CLIENT_DIR=\"/data/misc/wifi/sockets\"
