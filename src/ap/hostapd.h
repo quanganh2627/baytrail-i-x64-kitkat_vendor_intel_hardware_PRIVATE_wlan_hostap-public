@@ -346,6 +346,18 @@ struct hostapd_iface {
 	int csa_in_progress;
 	unsigned int csa_supported:1;
 
+	/*
+	 * if set, indicates that driver supports stations and keys removal
+	 * when stopping an AP
+	 */
+	unsigned int driver_ap_teardown_support:1;
+
+	/*
+	 * when set, indicates that the driver will handle the AP
+	 * teardown: delete global keys, station keys and stations
+	 */
+	unsigned int driver_ap_teardown:1;
+
 #ifdef CONFIG_ACS
 	unsigned int acs_num_completed_scans;
 #endif /* CONFIG_ACS */
