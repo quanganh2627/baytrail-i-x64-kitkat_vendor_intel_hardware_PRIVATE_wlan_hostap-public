@@ -769,6 +769,12 @@ struct wpa_supplicant {
 	unsigned int num_multichan_concurrent;
 
 	unsigned int csa_supported:1;
+
+	/*
+	 * When set, indicates that there is a miracast session on one of the
+	 * interfaces shared with this wpa_supplicant (including this interface)
+	 */
+	unsigned int miracast:1;
 };
 
 
@@ -801,6 +807,7 @@ void wpa_supplicant_initiate_eapol(struct wpa_supplicant *wpa_s);
 void wpa_clear_keys(struct wpa_supplicant *wpa_s, const u8 *addr);
 void wpa_supplicant_req_auth_timeout(struct wpa_supplicant *wpa_s,
 				     int sec, int usec);
+void wpa_supplicant_miracast(struct wpa_supplicant *wpa_s, int miracast);
 void wpa_supplicant_reinit_autoscan(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 			      enum wpa_states state);

@@ -5186,7 +5186,10 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 				country[2] = 0x04;
 				p2p_set_country(p2p, country);
 			}
+		} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
+			wpa_supplicant_miracast(wpa_s, atoi(cmd + 9));
 		}
+
 		ret = os_snprintf(buf, buflen, "%s\n", "OK");
 	}
 	return ret;
