@@ -2787,6 +2787,7 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->wmm_ac_params[1] = ac_bk;
 	config->wmm_ac_params[2] = ac_vi;
 	config->wmm_ac_params[3] = ac_vo;
+	config->disassoc_low_ack = DEFAULT_DISASSOC_LOW_ACK;
 
 	if (ctrl_interface)
 		config->ctrl_interface = os_strdup(ctrl_interface);

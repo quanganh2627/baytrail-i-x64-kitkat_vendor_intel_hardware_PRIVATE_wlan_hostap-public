@@ -26,6 +26,7 @@
 #define DEFAULT_MAX_NUM_STA 128
 #define DEFAULT_ACCESS_NETWORK_TYPE 15
 #define DEFAULT_SCAN_CUR_FREQ 0
+#define DEFAULT_DISASSOC_LOW_ACK 1
 
 #include "config_ssid.h"
 #include "wps/wps.h"

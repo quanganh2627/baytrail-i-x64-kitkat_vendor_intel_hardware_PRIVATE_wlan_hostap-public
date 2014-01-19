@@ -996,7 +996,7 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "filter_ssids=%d\n", config->filter_ssids);
 	if (config->max_num_sta != DEFAULT_MAX_NUM_STA)
 		fprintf(f, "max_num_sta=%u\n", config->max_num_sta);
-	if (config->disassoc_low_ack)
+	if (config->disassoc_low_ack != DEFAULT_DISASSOC_LOW_ACK)
 		fprintf(f, "disassoc_low_ack=%u\n", config->disassoc_low_ack);
 #ifdef CONFIG_HS20
 	if (config->hs20)
