@@ -1,6 +1,6 @@
 /*
  * EAP peer state machines (RFC 4137)
- * Copyright (c) 2004-2012, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2004-2014, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -179,6 +179,7 @@ SM_STATE(EAP, INITIALIZE)
 	eapol_set_bool(sm, EAPOL_eapNoResp, FALSE);
 	sm->num_rounds = 0;
 	sm->prev_failure = 0;
+	sm->expected_failure = 0;
 }
 
 
@@ -388,10 +389,11 @@ SM_STATE(EAP, METHOD)
 	sm->eapRespData = sm->m->process(sm, sm->eap_method_priv, &ret,
 					 eapReqData);
 	wpa_printf(MSG_DEBUG, "EAP: method process -> ignore=%s "
-		   "methodState=%s decision=%s",
+		   "methodState=%s decision=%s eapRespData=%p",
 		   ret.ignore ? "TRUE" : "FALSE",
 		   eap_sm_method_state_txt(ret.methodState),
-		   eap_sm_decision_txt(ret.decision));
+		   eap_sm_decision_txt(ret.decision),
+		   sm->eapRespData);
 
 	sm->ignore = ret.ignore;
 	if (sm->ignore)
@@ -432,8 +434,10 @@ SM_STATE(EAP, SEND_RESPONSE)
 		sm->lastId = sm->reqId;
 		sm->lastRespData = wpabuf_dup(sm->eapRespData);
 		eapol_set_bool(sm, EAPOL_eapResp, TRUE);
-	} else
+	} else {
+		wpa_printf(MSG_DEBUG, "EAP: No eapRespData available");
 		sm->lastRespData = NULL;
+	}
 	eapol_set_bool(sm, EAPOL_eapReq, FALSE);
 	eapol_set_int(sm, EAPOL_idleWhile, sm->ClientTimeout);
 }
@@ -724,8 +728,19 @@ static void eap_peer_sm_step_local(struct eap_sm *sm)
 			SM_ENTER(EAP, SEND_RESPONSE);
 		break;
 	case EAP_METHOD:
+		/*
+		 * Note: RFC 4137 uses methodState == DONE && decision == FAIL
+		 * as the condition. eapRespData == NULL here is used to allow
+		 * final EAP method response to be sent without having to change
+		 * all methods to either use methodState MAY_CONT or leaving
+		 * decision to something else than FAIL in cases where the only
+		 * expected response is EAP-Failure.
+		 */
 		if (sm->ignore)
 			SM_ENTER(EAP, DISCARD);
+		else if (sm->methodState == METHOD_DONE &&
+			 sm->decision == DECISION_FAIL && !sm->eapRespData)
+			SM_ENTER(EAP, FAILURE);
 		else
 			SM_ENTER(EAP, SEND_RESPONSE);
 		break;
@@ -2032,6 +2047,8 @@ const u8 * eap_get_config_password2(struct eap_sm *sm, size_t *len, int *hash)
 	if (config->flags & EAP_CONFIG_FLAGS_EXT_PASSWORD) {
 		if (eap_get_ext_password(sm, config) < 0)
 			return NULL;
+		if (hash)
+			*hash = 0;
 		*len = wpabuf_len(sm->ext_pw_buf);
 		return wpabuf_head(sm->ext_pw_buf);
 	}
@@ -2400,4 +2417,10 @@ void eap_set_anon_id(struct eap_sm *sm, const u8 *id, size_t len)
 {
 	if (sm->eapol_cb->set_anon_id)
 		sm->eapol_cb->set_anon_id(sm->eapol_ctx, id, len);
+}
+
+
+int eap_peer_was_failure_expected(struct eap_sm *sm)
+{
+	return sm->expected_failure;
 }

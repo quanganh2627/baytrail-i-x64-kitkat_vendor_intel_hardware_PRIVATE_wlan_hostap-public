@@ -43,7 +43,7 @@ struct ibss_rsn_peer {
 	struct wpa_state_machine *auth;
 	int authentication_status;
 
-	struct os_time own_auth_tx;
+	struct os_reltime own_auth_tx;
 };
 
 struct ibss_rsn {

@@ -23,12 +23,16 @@ typedef enum { FALSE = 0, TRUE = 1 } Boolean;
 #define WPA_CIPHER_WEP104 BIT(2)
 #define WPA_CIPHER_TKIP BIT(3)
 #define WPA_CIPHER_CCMP BIT(4)
-#ifdef CONFIG_IEEE80211W
 #define WPA_CIPHER_AES_128_CMAC BIT(5)
-#endif /* CONFIG_IEEE80211W */
 #define WPA_CIPHER_GCMP BIT(6)
 #define WPA_CIPHER_SMS4 BIT(7)
-#define WPA_CIPHER_AES_WAPI BIT(8)
+#define WPA_CIPHER_GCMP_256 BIT(8)
+#define WPA_CIPHER_CCMP_256 BIT(9)
+#define WPA_CIPHER_BIP_GMAC_128 BIT(11)
+#define WPA_CIPHER_BIP_GMAC_256 BIT(12)
+#define WPA_CIPHER_BIP_CMAC_256 BIT(13)
+#define WPA_CIPHER_GTK_NOT_USED BIT(14)
+#define WPA_CIPHER_AES_WAPI BIT(15)
 
 #define WPA_KEY_MGMT_IEEE8021X BIT(0)
 #define WPA_KEY_MGMT_PSK BIT(1)
@@ -59,7 +63,8 @@ static inline int wpa_key_mgmt_wpa_psk(int akm)
 	return !!(akm & (WPA_KEY_MGMT_PSK |
 			 WPA_KEY_MGMT_FT_PSK |
 			 WPA_KEY_MGMT_PSK_SHA256 |
-			 WPA_KEY_MGMT_SAE));
+			 WPA_KEY_MGMT_SAE |
+			 WPA_KEY_MGMT_FT_SAE));
 }
 
 static inline int wpa_key_mgmt_ft(int akm)
@@ -84,7 +89,8 @@ static inline int wpa_key_mgmt_sha256(int akm)
 static inline int wpa_key_mgmt_wpa(int akm)
 {
 	return wpa_key_mgmt_wpa_ieee8021x(akm) ||
-		wpa_key_mgmt_wpa_psk(akm);
+		wpa_key_mgmt_wpa_psk(akm) ||
+		wpa_key_mgmt_sae(akm);
 }
 
 static inline int wpa_key_mgmt_wpa_any(int akm)
@@ -128,8 +134,13 @@ enum wpa_alg {
 	WPA_ALG_PMK,
 	WPA_ALG_GCMP,
 	WPA_ALG_SMS4,
+	WPA_ALG_KRK,
+	WPA_ALG_GCMP_256,
+	WPA_ALG_CCMP_256,
+	WPA_ALG_BIP_GMAC_128,
+	WPA_ALG_BIP_GMAC_256,
+	WPA_ALG_BIP_CMAC_256,
 	WPA_ALG_AES,
-	WPA_ALG_KRK
 };
 
 /**

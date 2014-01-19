@@ -1,6 +1,6 @@
 /*
  * hostapd / Initialization and configuration
- * Copyright (c) 2002-2013, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2014, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -40,9 +40,6 @@ static int hostapd_setup_encryption(char *iface, struct hostapd_data *hapd);
 static int hostapd_broadcast_wep_clear(struct hostapd_data *hapd);
 static int setup_interface2(struct hostapd_iface *iface);
 static void channel_list_update_timeout(void *eloop_ctx, void *timeout_ctx);
-
-extern int wpa_debug_level;
-extern struct wpa_driver_ops *wpa_drivers[];
 
 
 int hostapd_for_each_interface(struct hapd_interfaces *interfaces,
@@ -666,6 +663,7 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 				   NULL, first == -1)) {
 			wpa_printf(MSG_ERROR, "Failed to add BSS (BSSID="
 				   MACSTR ")", MAC2STR(hapd->own_addr));
+			hapd->interface_added = 0;
 			return -1;
 		}
 	}
@@ -809,8 +807,8 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 		return -1;
 	}
 
-	if (!hapd->conf->start_disabled)
-		ieee802_11_set_beacon(hapd);
+	if (!hapd->conf->start_disabled && ieee802_11_set_beacon(hapd) < 0)
+		return -1;
 
 	if (hapd->wpa_auth && wpa_init_keys(hapd->wpa_auth) < 0)
 		return -1;
@@ -1539,6 +1537,11 @@ int hostapd_enable_iface(struct hostapd_iface *hapd_iface)
 	wpa_printf(MSG_DEBUG, "Enable interface %s",
 		   hapd_iface->conf->bss[0]->iface);
 
+	if (hostapd_config_check(hapd_iface->conf, 1) < 0) {
+		wpa_printf(MSG_INFO, "Invalid configuration - cannot enable");
+		return -1;
+	}
+
 	if (hapd_iface->interfaces == NULL ||
 	    hapd_iface->interfaces->driver_init == NULL ||
 	    hapd_iface->interfaces->driver_init(hapd_iface))
@@ -1571,7 +1574,7 @@ int hostapd_reload_iface(struct hostapd_iface *hapd_iface)
 		   hapd_iface->conf->bss[0]->iface);
 	for (j = 0; j < hapd_iface->num_bss; j++)
 		hostapd_set_security_params(hapd_iface->conf->bss[j]);
-	if (hostapd_config_check(hapd_iface->conf) < 0) {
+	if (hostapd_config_check(hapd_iface->conf, 1) < 0) {
 		wpa_printf(MSG_ERROR, "Updated configuration is invalid");
 		return -1;
 	}

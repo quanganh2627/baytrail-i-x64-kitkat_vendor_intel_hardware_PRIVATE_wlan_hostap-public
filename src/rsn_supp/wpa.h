@@ -62,7 +62,10 @@ struct wpa_sm_ctx {
 				const struct ieee80211_ht_capabilities *ht_capab,
 				const struct ieee80211_vht_capabilities *vht_capab,
 				u8 qosinfo, const u8 *ext_capab,
-				size_t ext_capab_len);
+				size_t ext_capab_len, const u8 *supp_channels,
+				size_t supp_channels_len,
+				const u8 *supp_oper_classes,
+				size_t supp_oper_classes_len);
 #endif /* CONFIG_TDLS */
 	void (*set_rekey_offload)(void *ctx, const u8 *kek, const u8 *kck,
 				  const u8 *replay_ctr);
@@ -306,10 +309,18 @@ static inline void wpa_sm_pmksa_cache_flush(struct wpa_sm *sm,
 
 #ifdef CONFIG_PEERKEY
 int wpa_sm_stkstart(struct wpa_sm *sm, const u8 *peer);
+int wpa_sm_rx_eapol_peerkey(struct wpa_sm *sm, const u8 *src_addr,
+			    const u8 *buf, size_t len);
 #else /* CONFIG_PEERKEY */
 static inline int wpa_sm_stkstart(struct wpa_sm *sm, const u8 *peer)
 {
 	return -1;
+}
+
+static inline int wpa_sm_rx_eapol_peerkey(struct wpa_sm *sm, const u8 *src_addr,
+					  const u8 *buf, size_t len)
+{
+	return 0;
 }
 #endif /* CONFIG_PEERKEY */
 
