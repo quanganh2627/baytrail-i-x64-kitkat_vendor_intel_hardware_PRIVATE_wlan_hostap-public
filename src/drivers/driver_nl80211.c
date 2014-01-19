@@ -5375,6 +5375,10 @@ static u32 wpa_alg_to_cipher_suite(enum wpa_alg alg, size_t key_len)
 		return WLAN_CIPHER_SUITE_BIP_GMAC_256;
 	case WPA_ALG_BIP_CMAC_256:
 		return WLAN_CIPHER_SUITE_BIP_CMAC_256;
+	case WPA_ALG_SMS4:
+		return WLAN_CIPHER_SUITE_SMS4;
+	case WPA_ALG_AES:
+		return WLAN_CIPHER_SUITE_AES_WAPI;
 	case WPA_ALG_KRK:
 		return WLAN_CIPHER_SUITE_KRK;
 	case WPA_ALG_NONE:
