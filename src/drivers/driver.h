@@ -193,6 +193,8 @@ struct hostapd_hw_modes {
  * @tsf: Timestamp
  * @age: Age of the information in milliseconds (i.e., how many milliseconds
  * ago the last Beacon or Probe Response frame was received)
+ * @freq_priority: frequency priority to sort scan results. This field is not
+ * set by the driver, but assigned prior a scan result sorting.
  * @ie_len: length of the following IE field in octets
  * @beacon_ie_len: length of the following Beacon IE field in octets
  *
@@ -216,6 +218,7 @@ struct wpa_scan_res {
 	int level;
 	u64 tsf;
 	unsigned int age;
+	s8 freq_priority;
 	size_t ie_len;
 	size_t beacon_ie_len;
 	/*

@@ -23,6 +23,17 @@
 #include "bss.h"
 #include "scan.h"
 
+/*
+ * Channels with a great SNR can operate at full rate. What is a great SNR?
+ * This doc https://supportforums.cisco.com/docs/DOC-12954 says, "the general
+ * rule of thumb is that any SNR above 20 is good." This one
+ * http://www.cisco.com/en/US/tech/tk722/tk809/technologies_q_and_a_item09186a00805e9a96.shtml#qa23
+ * recommends 25 as a minimum SNR for 54 Mbps data rate. 30 is chosen here as a
+ * conservative value.
+ */
+#define GREAT_SNR 30
+#define IS_5GHZ(n) (n > 4000)
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 static void wpa_supplicant_gen_assoc_event(struct wpa_supplicant *wpa_s)
 {
@@ -1439,28 +1450,53 @@ struct wpabuf * wpa_scan_get_vendor_ie_multi(const struct wpa_scan_res *res,
 }
 
 
-/*
- * Channels with a great SNR can operate at full rate. What is a great SNR?
- * This doc https://supportforums.cisco.com/docs/DOC-12954 says, "the general
- * rule of thumb is that any SNR above 20 is good." This one
- * http://www.cisco.com/en/US/tech/tk722/tk809/technologies_q_and_a_item09186a00805e9a96.shtml#qa23
- * recommends 25 as a minimum SNR for 54 Mbps data rate. 30 is chosen here as a
- * conservative value.
- */
-#define GREAT_SNR 30
+static int wpa_scan_result_compar_common(struct wpa_scan_res *a,
+					 struct wpa_scan_res *b)
+{
+	int snr_a, snr_b, maxrate_a, maxrate_b;
+
+	if ((a->flags & b->flags & WPA_SCAN_LEVEL_DBM) &&
+	    !((a->flags | b->flags) & WPA_SCAN_NOISE_INVALID)) {
+		snr_a = MIN(a->level - a->noise, GREAT_SNR);
+		snr_b = MIN(b->level - b->noise, GREAT_SNR);
+	} else {
+		/* not suitable information to calculate SNR, so use level */
+		snr_a = a->level;
+		snr_b = b->level;
+	}
+
+	if ((snr_a && snr_b && abs(snr_b - snr_a) < 5) ||
+	    (a->qual && b->qual && abs(b->qual - a->qual) < 10)) {
+		if (a->freq_priority < b->freq_priority)
+			return 1;
+		if (a->freq_priority > b->freq_priority)
+			return -1;
+		maxrate_a = wpa_scan_get_max_rate(a);
+		maxrate_b = wpa_scan_get_max_rate(b);
+		if (maxrate_a != maxrate_b)
+			return maxrate_b - maxrate_a;
+		if (IS_5GHZ(a->freq) ^ IS_5GHZ(b->freq))
+			return IS_5GHZ(a->freq) ? -1 : 1;
+	}
+
+	/* all things being equal, use SNR; if SNRs are
+	 * identical, use quality values since some drivers may only report
+	 * that value and leave the signal level zero */
+	if (snr_b == snr_a)
+		return b->qual - a->qual;
+	return snr_b - snr_a;
+}
+
 
 /* Compare function for sorting scan results. Return >0 if @b is considered
  * better. */
 static int wpa_scan_result_compar(const void *a, const void *b)
 {
-#define IS_5GHZ(n) (n > 4000)
-#define MIN(a,b) a < b ? a : b
 	struct wpa_scan_res **_wa = (void *) a;
 	struct wpa_scan_res **_wb = (void *) b;
 	struct wpa_scan_res *wa = *_wa;
 	struct wpa_scan_res *wb = *_wb;
-	int wpa_a, wpa_b, maxrate_a, maxrate_b;
-	int snr_a, snr_b;
+	int wpa_a, wpa_b;
 
 	/* WPA/WPA2 support preferred */
 	wpa_a = wpa_scan_get_vendor_ie(wa, WPA_IE_VENDOR_TYPE) != NULL ||
@@ -1481,37 +1517,7 @@ static int wpa_scan_result_compar(const void *a, const void *b)
 	    (wb->caps & IEEE80211_CAP_PRIVACY) == 0)
 		return -1;
 
-	if ((wa->flags & wb->flags & WPA_SCAN_LEVEL_DBM) &&
-	    !((wa->flags | wb->flags) & WPA_SCAN_NOISE_INVALID)) {
-		snr_a = MIN(wa->level - wa->noise, GREAT_SNR);
-		snr_b = MIN(wb->level - wb->noise, GREAT_SNR);
-	} else {
-		/* Not suitable information to calculate SNR, so use level */
-		snr_a = wa->level;
-		snr_b = wb->level;
-	}
-
-	/* best/max rate preferred if SNR close enough */
-        if ((snr_a && snr_b && abs(snr_b - snr_a) < 5) ||
-	    (wa->qual && wb->qual && abs(wb->qual - wa->qual) < 10)) {
-		maxrate_a = wpa_scan_get_max_rate(wa);
-		maxrate_b = wpa_scan_get_max_rate(wb);
-		if (maxrate_a != maxrate_b)
-			return maxrate_b - maxrate_a;
-		if (IS_5GHZ(wa->freq) ^ IS_5GHZ(wb->freq))
-			return IS_5GHZ(wa->freq) ? -1 : 1;
-	}
-
-	/* use freq for channel preference */
-
-	/* all things being equal, use SNR; if SNRs are
-	 * identical, use quality values since some drivers may only report
-	 * that value and leave the signal level zero */
-	if (snr_b == snr_a)
-		return wb->qual - wa->qual;
-	return snr_b - snr_a;
-#undef MIN
-#undef IS_5GHZ
+	return wpa_scan_result_compar_common(wa, wb);
 }
 
 
@@ -1553,12 +1559,7 @@ static int wpa_scan_result_wps_compar(const void *a, const void *b)
 	 * completion of provisioning.
 	 */
 
-	/* all things being equal, use signal level; if signal levels are
-	 * identical, use quality values since some drivers may only report
-	 * that value and leave the signal level zero */
-	if (wb->level == wa->level)
-		return wb->qual - wa->qual;
-	return wb->level - wa->level;
+	return wpa_scan_result_compar_common(wa, wb);
 }
 #endif /* CONFIG_WPS */
 
@@ -1581,16 +1582,18 @@ static void dump_scan_res(struct wpa_scan_results *scan_res)
 			int snr = r->level - r->noise;
 			wpa_printf(MSG_EXCESSIVE, MACSTR " freq=%d qual=%d "
 				   "noise=%d level=%d snr=%d%s flags=0x%x "
-				   "age=%u",
+				   "age=%u freq_priority=%d",
 				   MAC2STR(r->bssid), r->freq, r->qual,
 				   r->noise, r->level, snr,
 				   snr >= GREAT_SNR ? "*" : "", r->flags,
-				   r->age);
+				   r->age, r->freq_priority);
 		} else {
 			wpa_printf(MSG_EXCESSIVE, MACSTR " freq=%d qual=%d "
-				   "noise=%d level=%d flags=0x%x age=%u",
+				   "noise=%d level=%d flags=0x%x age=%u "
+				   "freq_priority=%d",
 				   MAC2STR(r->bssid), r->freq, r->qual,
-				   r->noise, r->level, r->flags, r->age);
+				   r->noise, r->level, r->flags, r->age,
+				   r->freq_priority);
 		}
 		pos = (u8 *) (r + 1);
 		if (r->ie_len)
@@ -1631,23 +1634,28 @@ int wpa_supplicant_filter_bssid_match(struct wpa_supplicant *wpa_s,
 }
 
 
-static void filter_scan_res(struct wpa_supplicant *wpa_s,
-			    struct wpa_scan_results *res)
+static void scan_res_presort(struct wpa_supplicant *wpa_s,
+			     struct wpa_scan_results *res)
 {
 	size_t i, j;
+	struct wpa_scan_res *r;
 
 	if (wpa_s->bssid_filter == NULL && wpa_s->setband == WPA_SETBAND_AUTO)
 		return;
 
 	for (i = 0, j = 0; i < res->num; i++) {
-		if (wpa_supplicant_filter_bssid_match(wpa_s,
-						      res->res[i]->bssid) &&
-		    wpas_freq_in_current_band(wpa_s, res->res[i]->freq)) {
-			res->res[j++] = res->res[i];
-		} else {
+		r = res->res[i];
+
+		/* filter scan results */
+		if (!wpa_supplicant_filter_bssid_match(wpa_s, r->bssid) ||
+		    !wpas_freq_in_current_band(wpa_s, r->freq)) {
 			os_free(res->res[i]);
 			res->res[i] = NULL;
+			continue;
 		}
+
+		res->res[j++] = r;
+		r->freq_priority = wpas_freq_priority_value(wpa_s, r->freq);
 	}
 
 	if (res->num != j) {
@@ -1689,7 +1697,7 @@ wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
 		 */
 		os_get_reltime(&scan_res->fetch_time);
 	}
-	filter_scan_res(wpa_s, scan_res);
+	scan_res_presort(wpa_s, scan_res);
 
 #ifdef CONFIG_WPS
 	if (wpas_wps_searching(wpa_s)) {
