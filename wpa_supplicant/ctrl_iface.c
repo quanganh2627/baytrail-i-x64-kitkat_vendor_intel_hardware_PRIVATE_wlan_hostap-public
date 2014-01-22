@@ -5259,6 +5259,7 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 				}
 			} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
 				wpa_supplicant_miracast(wpa_s, atoi(cmd + 9));
+			}
 		}
 	}
 
