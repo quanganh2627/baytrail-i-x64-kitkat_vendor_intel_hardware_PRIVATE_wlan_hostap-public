@@ -278,6 +278,7 @@ struct wpa_global {
 #endif /* CONFIG_WIFI_DISPLAY */
 
 	struct psk_list_entry *add_psk; /* From group formation */
+	struct dl_list freq_priority; /* struct wpa_freq_range_val_list */
 };
 
 
@@ -1006,5 +1007,9 @@ int get_shared_radio_freqs(struct wpa_supplicant *wpa_s,
 			   int *freq_array, unsigned int len);
 int wpas_freq_in_current_band(struct wpa_supplicant *wpa_s, int freq);
 int wpas_setband(struct wpa_supplicant *wpa_s, int band);
+
+int wpas_freq_priority_value(struct wpa_supplicant *wpa_s, int freq);
+int wpas_freq_priority_list_set(struct wpa_supplicant *wpa_s,
+				struct dl_list *ranges);
 
 #endif /* WPA_SUPPLICANT_I_H */

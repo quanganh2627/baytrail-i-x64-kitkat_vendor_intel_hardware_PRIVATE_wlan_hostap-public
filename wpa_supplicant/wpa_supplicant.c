@@ -3823,6 +3823,35 @@ static const char * wpa_supplicant_msg_ifname_cb(void *ctx)
 #endif /* CONFIG_NO_WPA_MSG */
 
 
+int wpas_freq_priority_value(struct wpa_supplicant *wpa_s, int freq)
+{
+	int val;
+
+	if (wpa_s && wpa_s->global &&
+	    !freq_range_value_list_value(&wpa_s->global->freq_priority,
+					 freq, &val))
+		return val;
+
+	return WPA_FREQ_PRIORITY_DEFAULT;
+}
+
+
+int wpas_freq_priority_list_set(struct wpa_supplicant *wpa_s,
+				struct dl_list *head)
+{
+	struct wpa_global *global = wpa_s->global;
+
+	if (!wpa_s || !global)
+		return -1;
+
+	freq_range_value_list_flush(&global->freq_priority);
+	dl_list_add(head, &global->freq_priority);
+	dl_list_del(head);
+
+	return 0;
+}
+
+
 /**
  * wpa_supplicant_init - Initialize %wpa_supplicant
  * @params: Parameters for %wpa_supplicant
@@ -3877,6 +3906,7 @@ struct wpa_global * wpa_supplicant_init(struct wpa_params *params)
 		return NULL;
 	dl_list_init(&global->p2p_srv_bonjour);
 	dl_list_init(&global->p2p_srv_upnp);
+	dl_list_init(&global->freq_priority);
 	global->params.daemonize = params->daemonize;
 	global->params.wait_for_monitor = params->wait_for_monitor;
 	global->params.dbus_ctrl_interface = params->dbus_ctrl_interface;
@@ -4017,6 +4047,8 @@ void wpa_supplicant_deinit(struct wpa_global *global)
 		wpa_drivers[i]->global_deinit(global->drv_priv[i]);
 	}
 	os_free(global->drv_priv);
+
+	freq_range_value_list_flush(&global->freq_priority);
 
 	random_deinit();
 

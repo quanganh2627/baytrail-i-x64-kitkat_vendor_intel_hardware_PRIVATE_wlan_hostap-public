@@ -827,3 +827,31 @@ void int_array_add_unique(int **res, int a)
 
 	*res = n;
 }
+
+
+int freq_range_value_list_value(const struct dl_list *head, int freq, int *val)
+{
+	const struct wpa_freq_range_value_list *p;
+
+	dl_list_for_each(p, head,
+			 const struct wpa_freq_range_value_list, list) {
+		if (freq_range_list_includes(&p->ranges, freq)) {
+			*val = p->value;
+			return 0;
+		}
+	}
+	return -1;
+}
+
+
+void freq_range_value_list_flush(struct dl_list *head)
+{
+	struct wpa_freq_range_value_list *p, *n;
+
+	dl_list_for_each_safe(p, n, head, struct wpa_freq_range_value_list,
+			      list) {
+		dl_list_del(&p->list);
+		os_free(p->ranges.range);
+		os_free(p);
+	}
+}

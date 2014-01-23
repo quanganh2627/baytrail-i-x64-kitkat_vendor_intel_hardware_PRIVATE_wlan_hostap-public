@@ -511,6 +511,7 @@ static inline int is_broadcast_ether_addr(const u8 *a)
 #define broadcast_ether_addr (const u8 *) "\xff\xff\xff\xff\xff\xff"
 
 #include "wpa_debug.h"
+#include "list.h"
 
 
 struct wpa_freq_range_list {
@@ -525,6 +526,15 @@ int freq_range_list_parse(struct wpa_freq_range_list *res, const char *value);
 int freq_range_list_includes(const struct wpa_freq_range_list *list,
 			     unsigned int freq);
 char * freq_range_list_str(const struct wpa_freq_range_list *list);
+
+struct wpa_freq_range_value_list {
+	struct dl_list list;
+	struct wpa_freq_range_list ranges;
+	int value;
+};
+
+int freq_range_value_list_value(const struct dl_list *head, int freq, int *val);
+void freq_range_value_list_flush(struct dl_list *head);
 
 int int_array_len(const int *a);
 void int_array_concat(int **res, const int *a);

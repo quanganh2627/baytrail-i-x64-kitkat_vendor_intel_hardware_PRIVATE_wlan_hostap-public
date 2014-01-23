@@ -353,4 +353,15 @@ enum wpa_ctrl_req_type {
 /* P2P Mgmt interface disabled since the underlying interface is disabled*/
 #define WPA_P2P_MGMT_IF_DISABLED BIT(1)
 
+/**
+ * Frequency priority constants
+ *
+ * A priority value is an integer between WPA_FREQ_PRIORITY_MIN (least
+ * preferable) and WPA_FREQ_PRIORITY_MAX (most preferable).
+ * By default all frequencies/channels are considered as having priority 0.
+ */
+#define WPA_FREQ_PRIORITY_MIN		-10
+#define WPA_FREQ_PRIORITY_DEFAULT	0
+#define WPA_FREQ_PRIORITY_MAX		10
+
 #endif /* DEFS_H */
