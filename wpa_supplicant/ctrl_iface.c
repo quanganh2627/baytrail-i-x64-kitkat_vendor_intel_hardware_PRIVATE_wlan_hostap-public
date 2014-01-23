@@ -205,6 +205,100 @@ static int set_disallow_aps(struct wpa_supplicant *wpa_s, char *val)
 }
 
 
+int wpas_ctrl_iface_freq_priority_get(struct wpa_supplicant *wpa_s, char *reply,
+				      int reply_size)
+{
+	char *s;
+	int ret, written = 0;
+	const struct wpa_freq_range_value_list *p;
+	const struct dl_list *head = &wpa_s->global->freq_priority;
+
+	dl_list_for_each(p, head, const struct wpa_freq_range_value_list,
+			 list) {
+		s = freq_range_list_str(&p->ranges);
+		ret = os_snprintf(reply + written, reply_size - written,
+				  " %d{%s}", p->value, s);
+		os_free(s);
+
+		if (ret > 0)
+			written += ret;
+
+		if (ret < 0 || reply_size <= written) {
+			wpa_msg(wpa_s, MSG_ERROR,
+				"Result write error on freq_priority get operation");
+			return -1;
+		}
+	}
+
+	return written;
+}
+
+
+int wpas_ctrl_iface_freq_priority_set(struct wpa_supplicant *wpa_s, char *cmd)
+{
+	char *pos1 = cmd, *pos2;
+	struct wpa_freq_range_value_list *p = NULL;
+	struct dl_list head;
+
+	dl_list_init(&head);
+
+	for (;;) {
+		while (isblank(*pos1))
+			pos1++;
+		if (!*pos1)
+			break;
+
+		if (!p) {
+			p = os_zalloc(sizeof(*p));
+			if (!p)
+				goto fail;
+		}
+
+		p->value = atoi(pos1);
+
+		if (p->value < WPA_FREQ_PRIORITY_MIN ||
+		    p->value > WPA_FREQ_PRIORITY_MAX)
+			goto fail;
+
+		pos1 = os_strchr(pos1, '{');
+		if (!pos1)
+			goto fail;
+		pos2 = os_strchr(++pos1, '}');
+		if (!pos2)
+			goto fail;
+		*pos2 = '\0';
+
+		if (freq_range_list_parse(&p->ranges, pos1) < 0)
+			goto fail;
+
+		if (p->value != WPA_FREQ_PRIORITY_DEFAULT &&
+		    p->ranges.num > 0) {
+			dl_list_add_tail(&head, &p->list);
+			wpa_printf(MSG_DEBUG,
+				   "CTRL_IFACE: Freq Interference: %d{%s}",
+				   p->value, pos1);
+			p = NULL;
+		}
+
+		pos1 = pos2 + 1;
+	}
+
+	wpas_freq_priority_list_set(wpa_s, &head);
+	os_free(p);
+
+	return 0;
+
+fail:
+	wpa_printf(MSG_INFO,
+		   "CTRL_IFACE: Failed to set freq interference list");
+
+	freq_range_value_list_flush(&head);
+	os_free(p);
+
+	return -1;
+}
+
+
 static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 					 char *cmd)
 {
@@ -350,6 +444,8 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 		ret = set_disallow_aps(wpa_s, value);
 	} else if (os_strcasecmp(cmd, "no_keep_alive") == 0) {
 		wpa_s->no_keep_alive = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "freq_priority") == 0) {
+		ret = wpas_ctrl_iface_freq_priority_set(wpa_s, value);
 	} else {
 		value[-1] = '=';
 		ret = wpa_config_process_global(wpa_s->conf, cmd, -1);
@@ -396,6 +492,8 @@ static int wpa_supplicant_ctrl_iface_get(struct wpa_supplicant *wpa_s,
 				       wpa_s->last_gtk_len);
 		return res;
 #endif /* CONFIG_TESTING_GET_GTK */
+	} else if (os_strcasecmp(cmd, "freq_priority") == 0) {
+		res = wpas_ctrl_iface_freq_priority_get(wpa_s, buf, buflen);
 	}
 
 	if (res < 0 || (unsigned int) res >= buflen)
