@@ -2496,6 +2496,25 @@ struct wpa_driver_ops {
 #endif /* ANDROID */
 
 	/**
+	 * vendor_cmd - Execute vendor specific command
+	 * @priv: Private driver interface data
+	 * @vendor_id: vendor id
+	 * @subcmd: vendor command id
+	 * @data: vendor command parameters(%NULL if no parameters)
+	 * @data_len: data length
+	 * @buf: return buffer(%NULL to ignore reply)
+	 * Returns: 0 on success, negative (<0) on failure
+	 *
+	 * This function handles vendor specific commands that are passed to
+	 * the driver/device. The command is indentified by vendor id and
+	 * command id. Parameters can be passed as argument to the command
+	 * in the data buffer. Reply(if any) will be filled in the supplied buf
+	 */
+	int (*vendor_cmd)(void *priv, unsigned int vendor_id,
+			  unsigned int subcmd, const u8 *data, size_t data_len,
+			  struct wpabuf *buf);
+
+	/**
 	 * set_rekey_info - Set rekey information
 	 * @priv: Private driver interface data
 	 * @kek: Current KEK
