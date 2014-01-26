@@ -3375,11 +3375,13 @@ static void wpas_p2p_add_chan(struct p2p_reg_class *reg, u8 chan)
 
 static int wpas_p2p_default_channels(struct wpa_supplicant *wpa_s,
 				     struct p2p_channels *chan,
-				     struct p2p_channels *cli_chan)
+				     struct p2p_channels *cli_chan,
+				     struct p2p_channels *ind_chan)
 {
 	int i, cla = 0;
 
 	os_memset(cli_chan, 0, sizeof(*cli_chan));
+	os_memset(ind_chan, 0, sizeof(*ind_chan));
 
 	wpa_printf(MSG_DEBUG, "P2P: Enable operating classes for 2.4 GHz "
 		   "band");
@@ -3673,7 +3675,7 @@ static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 		return NOT_ALLOWED;
 
 	if (res == INDOOR_ONLY || res2 == INDOOR_ONLY)
-		return NOT_ALLOWED;
+		return INDOOR_ONLY;
 
 	if (res == NO_IR || res2 == NO_IR)
 		return NO_IR;
@@ -3683,10 +3685,11 @@ static enum chan_allowed wpas_p2p_verify_channel(struct wpa_supplicant *wpa_s,
 
 static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 				   struct p2p_channels *chan,
-				   struct p2p_channels *cli_chan)
+				   struct p2p_channels *cli_chan,
+				   struct p2p_channels *ind_chan)
 {
 	struct hostapd_hw_modes *mode;
-	int cla, op, cli_cla;
+	int cla, op, cli_cla, ind_cla;
 	struct wpa_used_freq_data *freqs;
 	unsigned int num = wpa_s->num_multichan_concurrent;
 
@@ -3694,19 +3697,21 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 		wpa_printf(MSG_DEBUG, "P2P: Driver did not support fetching "
 			   "of all supported channels; assume dualband "
 			   "support");
-		return wpas_p2p_default_channels(wpa_s, chan, cli_chan);
+		return wpas_p2p_default_channels(wpa_s, chan, cli_chan,
+						 ind_chan);
 	}
 
 	/* Note: the flow can still be handled even if the allocation fails */
 	freqs = os_calloc(num, sizeof(struct wpa_used_freq_data));
 	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
 
-	cla = cli_cla = 0;
+	cla = cli_cla = ind_cla = 0;
 
 	for (op = 0; op_class[op].op_class; op++) {
 		struct p2p_oper_class_map *o = &op_class[op];
 		u8 ch;
 		struct p2p_reg_class *reg = NULL, *cli_reg = NULL;
+		struct p2p_reg_class *indoor_reg = NULL;
 
 		mode = get_mode(wpa_s->hw.modes, wpa_s->hw.num_modes, o->mode);
 		if (mode == NULL)
@@ -3736,6 +3741,19 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 				}
 				cli_reg->channel[cli_reg->channels] = ch;
 				cli_reg->channels++;
+			} else if (res == INDOOR_ONLY &&
+				   wpa_s->conf->p2p_add_cli_chan_indoor) {
+				if (indoor_reg == NULL) {
+					wpa_printf(MSG_DEBUG,
+						   "P2P: Add operating class %u (indoor)",
+						   o->op_class);
+					indoor_reg =
+						&ind_chan->reg_class[ind_cla];
+					ind_cla++;
+					indoor_reg->reg_class = o->op_class;
+				}
+				indoor_reg->channel[indoor_reg->channels] = ch;
+				indoor_reg->channels++;
 			}
 		}
 		if (reg) {
@@ -3746,10 +3764,15 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 			wpa_hexdump(MSG_DEBUG, "P2P: Channels (client only)",
 				    cli_reg->channel, cli_reg->channels);
 		}
+		if (indoor_reg) {
+			wpa_hexdump(MSG_DEBUG, "P2P: Channels (indoor)",
+				    indoor_reg->channel, indoor_reg->channels);
+		}
 	}
 
 	chan->reg_classes = cla;
 	cli_chan->reg_classes = cli_cla;
+	ind_chan->reg_classes = ind_cla;
 
 	os_free(freqs);
 	return 0;
@@ -4055,7 +4078,8 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	} else
 		os_memcpy(p2p.country, "XX\x04", 3);
 
-	if (wpas_p2p_setup_channels(wpa_s, &p2p.channels, &p2p.cli_channels)) {
+	if (wpas_p2p_setup_channels(wpa_s, &p2p.channels, &p2p.cli_channels,
+				    &p2p.indoor_channels)) {
 		wpa_printf(MSG_ERROR, "P2P: Failed to configure supported "
 			   "channel list");
 		return -1;
@@ -6626,20 +6650,22 @@ int wpas_p2p_notif_pbc_overlap(struct wpa_supplicant *wpa_s)
 
 void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s)
 {
-	struct p2p_channels chan, cli_chan;
+	struct p2p_channels chan, cli_chan, ind_chan;
 
 	if (wpa_s->global == NULL || wpa_s->global->p2p == NULL)
 		return;
 
 	os_memset(&chan, 0, sizeof(chan));
 	os_memset(&cli_chan, 0, sizeof(cli_chan));
-	if (wpas_p2p_setup_channels(wpa_s, &chan, &cli_chan)) {
+	os_memset(&ind_chan, 0, sizeof(ind_chan));
+	if (wpas_p2p_setup_channels(wpa_s, &chan, &cli_chan, &ind_chan)) {
 		wpa_printf(MSG_ERROR, "P2P: Failed to update supported "
 			   "channel list");
 		return;
 	}
 
-	p2p_update_channel_list(wpa_s->global->p2p, &chan, &cli_chan);
+	p2p_update_channel_list(wpa_s->global->p2p, &chan, &cli_chan,
+				&ind_chan);
 }
 
 

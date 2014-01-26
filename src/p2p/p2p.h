@@ -311,6 +311,21 @@ struct p2p_config {
 	struct p2p_channels cli_channels;
 
 	/**
+	 * indoor_channels - Additional client channels
+	 *
+	 * This list of channels (if any) will be used when advertising local
+	 * channels during GO Negotiation or Invitation for the cases where the
+	 * local end may become the client and the peer is identified as a non
+	 * mobile device.
+	 * This may allow the peer to become a GO on additional channels if it
+	 * supports these options and is a non mobile device.
+	 * The uses cases for these channels are similar to that of the
+	 * cli_channels, with the exception that they can be used only if
+	 * we identified the peer as a non mobile device.
+	 */
+	struct p2p_channels indoor_channels;
+
+	/**
 	 * num_pref_chan - Number of pref_chan entries
 	 */
 	unsigned int num_pref_chan;
@@ -1739,7 +1754,8 @@ unsigned int p2p_get_pref_freq(struct p2p_data *p2p,
 
 void p2p_update_channel_list(struct p2p_data *p2p,
 			     const struct p2p_channels *chan,
-			     const struct p2p_channels *cli_chan);
+			     const struct p2p_channels *cli_chan,
+			     const struct p2p_channels *indoor_chan);
 
 /**
  * p2p_set_best_channels - Update best channel information

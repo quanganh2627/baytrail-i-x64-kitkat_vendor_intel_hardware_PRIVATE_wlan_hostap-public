@@ -407,6 +407,8 @@ int p2p_supported_freq_cli(struct p2p_data *p2p, unsigned int freq)
 	return p2p_channels_includes(&p2p->cfg->channels, op_reg_class,
 				     op_channel) ||
 		p2p_channels_includes(&p2p->cfg->cli_channels, op_reg_class,
+				      op_channel) ||
+		p2p_channels_includes(&p2p->cfg->indoor_channels, op_reg_class,
 				      op_channel);
 }
 
