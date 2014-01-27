@@ -3967,8 +3967,10 @@ void p2p_deauth_notif(struct p2p_data *p2p, const u8 *bssid, u16 reason_code,
 	os_memset(&msg, 0, sizeof(msg));
 	if (p2p_parse_ies(ie, ie_len, &msg))
 		return;
-	if (msg.minor_reason_code == NULL)
+	if (msg.minor_reason_code == NULL) {
+		p2p_parse_free(&msg);
 		return;
+	}
 
 	p2p_dbg(p2p, "Deauthentication notification BSSID " MACSTR
 		" reason_code=%u minor_reason_code=%u",
@@ -3989,8 +3991,10 @@ void p2p_disassoc_notif(struct p2p_data *p2p, const u8 *bssid, u16 reason_code,
 	os_memset(&msg, 0, sizeof(msg));
 	if (p2p_parse_ies(ie, ie_len, &msg))
 		return;
-	if (msg.minor_reason_code == NULL)
+	if (msg.minor_reason_code == NULL) {
+		p2p_parse_free(&msg);
 		return;
+	}
 
 	p2p_dbg(p2p, "Disassociation notification BSSID " MACSTR
 		" reason_code=%u minor_reason_code=%u",
