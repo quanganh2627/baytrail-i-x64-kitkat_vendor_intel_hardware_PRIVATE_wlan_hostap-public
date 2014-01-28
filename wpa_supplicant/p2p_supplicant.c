@@ -3626,6 +3626,21 @@ static int wpas_go_connected(void *ctx, const u8 *dev_addr)
 }
 
 
+static int wpas_is_concurrent_session_active(void *ctx)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+	struct wpa_supplicant *ifs;
+
+	for (ifs = wpa_s->global->ifaces; ifs; ifs = ifs->next) {
+		if (ifs == wpa_s)
+			continue;
+		if (ifs->wpa_state > WPA_ASSOCIATED)
+			return 1;
+	}
+	return 0;
+}
+
+
 static void wpas_p2p_debug_print(void *ctx, int level, const char *msg)
 {
 	struct wpa_supplicant *wpa_s = ctx;
@@ -3755,6 +3770,7 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 	p2p.get_noa = wpas_get_noa;
 	p2p.go_connected = wpas_go_connected;
 	p2p.presence_resp = wpas_presence_resp;
+	p2p.is_concurrent_session_active = wpas_is_concurrent_session_active;
 
 	os_memcpy(wpa_s->global->p2p_dev_addr, wpa_s->own_addr, ETH_ALEN);
 	os_memcpy(p2p.dev_addr, wpa_s->global->p2p_dev_addr, ETH_ALEN);
@@ -4351,6 +4367,18 @@ static void wpas_p2p_join_scan_req(struct wpa_supplicant *wpa_s, int freq,
 	params.p2p_probe = 1;
 	params.extra_ies = wpabuf_head(ies);
 	params.extra_ies_len = wpabuf_len(ies);
+
+	if (!freq) {
+		int oper_freq;
+		/*
+		 * If freq is not provided, check the operating freq of the GO
+		 * and use a single channel scan on if possible.
+		 */
+		oper_freq = p2p_get_oper_freq(wpa_s->global->p2p,
+					      wpa_s->pending_join_iface_addr);
+		if (oper_freq > 0)
+			freq = oper_freq;
+	}
 	if (freq > 0) {
 		freqs[0] = freq;
 		params.freqs = freqs;

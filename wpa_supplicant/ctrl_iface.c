@@ -54,7 +54,7 @@ static int pno_start(struct wpa_supplicant *wpa_s)
 	struct wpa_ssid *ssid;
 	struct wpa_driver_scan_params params;
 
-	if (wpa_s->pno)
+	if (wpa_s->pno || wpa_s->pno_sched_pending)
 		return 0;
 
 	if ((wpa_s->wpa_state > WPA_SCANNING) &&
@@ -64,8 +64,14 @@ static int pno_start(struct wpa_supplicant *wpa_s)
 	}
 
 	if (wpa_s->wpa_state == WPA_SCANNING) {
-		wpa_supplicant_cancel_sched_scan(wpa_s);
 		wpa_supplicant_cancel_scan(wpa_s);
+		if (wpa_s->sched_scanning) {
+			wpa_printf(MSG_DEBUG, "Schedule PNO on completion of "
+				   "ongoing sched scan");
+			wpa_supplicant_cancel_sched_scan(wpa_s);
+			wpa_s->pno_sched_pending = 1;
+			return 0;
+		}
 	}
 
 	os_memset(&params, 0, sizeof(params));
@@ -128,10 +134,12 @@ static int pno_stop(struct wpa_supplicant *wpa_s)
 {
 	int ret = 0;
 
-	if (wpa_s->pno) {
+	if (wpa_s->pno || wpa_s->sched_scanning) {
 		wpa_s->pno = 0;
 		ret = wpa_supplicant_stop_sched_scan(wpa_s);
 	}
+
+	wpa_s->pno_sched_pending = 0;
 
 	if (wpa_s->wpa_state == WPA_SCANNING)
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
@@ -5328,6 +5336,9 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_supplicant_ctrl_iface_remove_network(wpa_s, "all");
 	wpa_supplicant_ctrl_iface_remove_cred(wpa_s, "all");
 	wpa_config_flush_blobs(wpa_s->conf);
+	wpa_s->conf->auto_interworking = 0;
+	wpa_s->conf->okc = 0;
+	wpa_s->conf->pmf = 0;
 
 	wpa_sm_set_param(wpa_s->wpa, RSNA_PMK_LIFETIME, 43200);
 	wpa_sm_set_param(wpa_s->wpa, RSNA_PMK_REAUTH_THRESHOLD, 70);
@@ -6369,10 +6380,8 @@ static char * wpas_global_ctrl_iface_redir_p2p(struct wpa_global *global,
 {
 #ifdef CONFIG_P2P
 	static const char * cmd[] = {
-#ifdef ANDROID_P2P
 		"LIST_NETWORKS",
 		"SAVE_CONFIG",
-#endif
 		"P2P_FIND",
 		"P2P_STOP_FIND",
 		"P2P_LISTEN",
@@ -6387,12 +6396,12 @@ static char * wpas_global_ctrl_iface_redir_p2p(struct wpa_global *global,
 		NULL
 	};
 	static const char * prefix[] = {
-#ifdef ANDROID_P2P
+#ifdef ANDROID
 		"DRIVER ",
+#endif /* ANDROID */
 		"GET_NETWORK ",
 		"REMOVE_NETWORK ",
 		"SET ",
-#endif
 		"P2P_FIND ",
 		"P2P_CONNECT ",
 		"P2P_LISTEN ",

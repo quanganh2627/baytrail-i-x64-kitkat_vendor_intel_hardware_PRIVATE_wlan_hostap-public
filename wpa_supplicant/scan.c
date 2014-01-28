@@ -521,6 +521,11 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 	size_t max_ssids;
 	enum wpa_states prev_state;
 
+	if (wpa_s->pno || wpa_s->pno_sched_pending) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Skip scan - PNO is in progress");
+		return;
+	}
+
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Skip scan - interface disabled");
 		return;
@@ -1114,6 +1119,9 @@ int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
 		params.extra_ies = wpabuf_head(extra_ie);
 		params.extra_ies_len = wpabuf_len(extra_ie);
 	}
+
+	if (wpa_s->conf->filter_rssi)
+		params.filter_rssi = wpa_s->conf->filter_rssi;
 
 	scan_params = &params;
 
@@ -1789,13 +1797,12 @@ wpa_scan_clone_params(const struct wpa_driver_scan_params *src)
 	}
 
 	if (src->filter_ssids) {
-		params->filter_ssids = os_malloc(sizeof(*params->filter_ssids) *
+		params->filter_ssids = os_malloc(sizeof(params->filter_ssids) *
 						 src->num_filter_ssids);
 		if (params->filter_ssids == NULL)
 			goto failed;
 		os_memcpy(params->filter_ssids, src->filter_ssids,
-			  sizeof(*params->filter_ssids) *
-			  src->num_filter_ssids);
+			  sizeof(params->filter_ssids) * src->num_filter_ssids);
 		params->num_filter_ssids = src->num_filter_ssids;
 	}
 
