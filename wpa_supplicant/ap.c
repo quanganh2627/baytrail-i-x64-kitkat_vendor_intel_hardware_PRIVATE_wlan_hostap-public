@@ -490,9 +490,23 @@ static void wpas_get_bss_beacon_interval(struct wpa_supplicant *wpa_s)
 			   "use the beacon interval from bss interface=%s",
 			   ifs->ifname);
 
-		wpa_s->conf->beacon_int = ifs->current_bss->beacon_int;
-		return;
+		/*
+		 * WCD: this is a WA to for Intel chips that cannot handle
+		 * beacon_int greater than ~102. In case that the beacon
+		 * interval is bigger and the beacon interval is modulo 102,
+		 * set the beacon interval to 102.
+		 */
+		if (ifs->current_bss->beacon_int <= 102) {
+			wpa_s->conf->beacon_int = ifs->current_bss->beacon_int;
+			return;
+		} else if (ifs->current_bss->beacon_int % 102 == 0) {
+			wpa_s->conf->beacon_int = 102;
+			return;
+		}
 	}
+
+	/* for all other cases use 100 */
+	wpa_s->conf->beacon_int = 100;
 }
 
 static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
