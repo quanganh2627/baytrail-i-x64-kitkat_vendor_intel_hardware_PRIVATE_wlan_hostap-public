@@ -5392,7 +5392,7 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_sm_set_param(wpa_s->wpa, RSNA_SA_TIMEOUT, 60);
 	eapol_sm_notify_logoff(wpa_s->eapol, FALSE);
 
-	radio_remove_unstarted_work(wpa_s, NULL);
+	radio_remove_works(wpa_s, NULL, 1);
 }
 
 
@@ -5444,6 +5444,10 @@ static void wpas_ctrl_radio_work_cb(struct wpa_radio_work *work, int deinit)
 	struct wpa_external_work *ework = work->ctx;
 
 	if (deinit) {
+		if (work->started)
+			eloop_cancel_timeout(wpas_ctrl_radio_work_timeout,
+					     work, NULL);
+
 		os_free(ework);
 		return;
 	}

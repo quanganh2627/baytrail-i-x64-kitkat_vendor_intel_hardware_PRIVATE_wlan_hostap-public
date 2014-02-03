@@ -266,7 +266,12 @@ static void wpas_p2p_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 	int ret;
 
 	if (deinit) {
-		wpa_scan_free_params(params);
+		if (!work->started) {
+			wpa_scan_free_params(params);
+			return;
+		}
+
+		wpa_s->p2p_scan_work = NULL;
 		return;
 	}
 
@@ -369,7 +374,7 @@ static int wpas_p2p_scan(void *ctx, enum p2p_scan_type type, int freq,
 		break;
 	}
 
-	radio_remove_unstarted_work(wpa_s, "p2p-scan");
+	radio_remove_works(wpa_s, "p2p-scan", 0);
 	if (radio_add_work(wpa_s, 0, "p2p-scan", 0, wpas_p2p_trigger_scan_cb,
 			   params) < 0)
 		goto fail;
@@ -1024,6 +1029,12 @@ static void wpas_send_action_cb(struct wpa_radio_work *work, int deinit)
 	struct send_action_work *awork = work->ctx;
 
 	if (deinit) {
+		if (work->started) {
+			eloop_cancel_timeout(wpas_p2p_send_action_work_timeout,
+					     wpa_s, NULL);
+			wpa_s->p2p_send_action_work = NULL;
+			offchannel_send_action_done(wpa_s);
+		}
 		os_free(awork);
 		return;
 	}
@@ -1763,12 +1774,30 @@ static void wpas_p2p_listen_work_done(struct wpa_supplicant *wpa_s)
 }
 
 
+static void wpas_stop_listen(void *ctx)
+{
+	struct wpa_supplicant *wpa_s = ctx;
+	if (wpa_s->off_channel_freq || wpa_s->roc_waiting_drv_freq) {
+		wpa_drv_cancel_remain_on_channel(wpa_s);
+		wpa_s->off_channel_freq = 0;
+		wpa_s->roc_waiting_drv_freq = 0;
+	}
+	wpa_drv_set_ap_wps_ie(wpa_s, NULL, NULL, NULL);
+	wpa_drv_probe_req_report(wpa_s, 0);
+	wpas_p2p_listen_work_done(wpa_s);
+}
+
+
 static void wpas_start_listen_cb(struct wpa_radio_work *work, int deinit)
 {
 	struct wpa_supplicant *wpa_s = work->wpa_s;
 	struct wpas_p2p_listen_work *lwork = work->ctx;
 
 	if (deinit) {
+		if (work->started) {
+			wpa_s->p2p_listen_work = NULL;
+			wpas_stop_listen(wpa_s);
+		}
 		wpas_p2p_listen_work_free(lwork);
 		return;
 	}
@@ -1833,20 +1862,6 @@ static int wpas_start_listen(void *ctx, unsigned int freq,
 	}
 
 	return 0;
-}
-
-
-static void wpas_stop_listen(void *ctx)
-{
-	struct wpa_supplicant *wpa_s = ctx;
-	if (wpa_s->off_channel_freq || wpa_s->roc_waiting_drv_freq) {
-		wpa_drv_cancel_remain_on_channel(wpa_s);
-		wpa_s->off_channel_freq = 0;
-		wpa_s->roc_waiting_drv_freq = 0;
-	}
-	wpa_drv_set_ap_wps_ie(wpa_s, NULL, NULL, NULL);
-	wpa_drv_probe_req_report(wpa_s, 0);
-	wpas_p2p_listen_work_done(wpa_s);
 }
 
 
