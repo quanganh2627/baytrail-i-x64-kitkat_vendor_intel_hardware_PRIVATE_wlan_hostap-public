@@ -1096,6 +1096,8 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->tdls_external_control)
 		fprintf(f, "tdls_external_control=%d\n",
 			config->tdls_external_control);
+	if (config->bgscan)
+		fprintf(f, "bgscan=%s\n", config->bgscan);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */
