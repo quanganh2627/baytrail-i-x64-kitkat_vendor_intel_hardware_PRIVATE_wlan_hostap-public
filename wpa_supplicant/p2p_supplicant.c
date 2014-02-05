@@ -5178,6 +5178,39 @@ static int wpas_p2p_select_go_freq(struct wpa_supplicant *wpa_s, int freq)
 }
 
 
+static int wpas_p2p_select_freq_no_pref(struct wpa_supplicant *wpa_s,
+					struct p2p_go_neg_results *params,
+					const struct p2p_channels *channels)
+{
+	unsigned int i, r;
+
+	/* first try some random selection of the social channels */
+	os_get_random((u8 *)&r, sizeof(r));
+
+	for (i = 0; i < 3; i++) {
+		params->freq = 2412 + ((r + i) % 3) * 25;
+		if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
+		    wpas_freq_included(wpa_s, channels, params->freq))
+				goto out;
+	}
+
+	/* try all channels in reg. class 81 */
+	for (i = 0; i < 11; i++) {
+		params->freq = 2412 + i * 5;
+		if (!wpas_p2p_disallowed_freq(wpa_s->global, params->freq) &&
+		    wpas_freq_included(wpa_s, channels, params->freq))
+			goto out;
+	}
+
+	wpa_printf(MSG_DEBUG, "P2P: No 2.4 GHz channel allowed");
+	return -1;
+out:
+	wpa_printf(MSG_DEBUG, "P2P: Set GO freq %d MHz (no preference known)",
+		   params->freq);
+	return 0;
+}
+
+
 static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 				   struct p2p_go_neg_results *params,
 				   int freq, int ht40, int vht,
@@ -5275,21 +5308,9 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 			}
 		}
 	} else {
-		int chan;
-		for (chan = 0; chan < 11; chan++) {
-			params->freq = 2412 + chan * 5;
-			if (!wpas_p2p_disallowed_freq(wpa_s->global,
-						      params->freq) &&
-			    wpas_freq_included(wpa_s, channels, params->freq))
-				break;
-		}
-		if (chan == 11) {
-			wpa_printf(MSG_DEBUG, "P2P: No 2.4 GHz channel "
-				   "allowed");
+		/* no preference, select some channel */
+		if (wpas_p2p_select_freq_no_pref(wpa_s, params, channels) < 0)
 			return -1;
-		}
-		wpa_printf(MSG_DEBUG, "P2P: Set GO freq %d MHz (no preference "
-			   "known)", params->freq);
 	}
 
 	freqs_data = os_calloc(wpa_s->num_multichan_concurrent,
