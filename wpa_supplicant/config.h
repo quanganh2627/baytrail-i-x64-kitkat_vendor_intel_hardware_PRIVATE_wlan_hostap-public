@@ -30,6 +30,8 @@
 #define DEFAULT_SCAN_CUR_FREQ 0
 #define DEFAULT_DISASSOC_LOW_ACK 1
 
+#define DEFAULT_GLOBAL_BGSCAN "simple:64:-72:600"
+
 #include "config_ssid.h"
 #include "wps/wps.h"
 #include "common/ieee802_11_common.h"

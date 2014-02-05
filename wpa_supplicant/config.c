@@ -2794,6 +2794,10 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->wmm_ac_params[3] = ac_vo;
 	config->disassoc_low_ack = DEFAULT_DISASSOC_LOW_ACK;
 
+	config->bgscan = os_strdup(DEFAULT_GLOBAL_BGSCAN);
+	if (!config->bgscan)
+		wpa_printf(MSG_ERROR, "Failed to duplicate bgscan string");
+
 	if (ctrl_interface)
 		config->ctrl_interface = os_strdup(ctrl_interface);
 	if (driver_param)
