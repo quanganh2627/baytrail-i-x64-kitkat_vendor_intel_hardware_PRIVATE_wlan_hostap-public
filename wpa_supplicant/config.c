@@ -2798,6 +2798,8 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	if (!config->bgscan)
 		wpa_printf(MSG_ERROR, "Failed to duplicate bgscan string");
 
+	config->sched_scan_interval = DEFAULT_SCHED_SCAN_INTERVAL;
+
 	if (ctrl_interface)
 		config->ctrl_interface = os_strdup(ctrl_interface);
 	if (driver_param)
