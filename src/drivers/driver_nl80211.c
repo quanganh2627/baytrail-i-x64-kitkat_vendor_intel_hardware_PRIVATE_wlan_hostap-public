@@ -3188,6 +3188,49 @@ static void wpa_driver_nl80211_event_receive(int sock, void *eloop_ctx,
 }
 
 
+static int
+nl80211_set_country(void *priv, const char *alpha2_arg, int cell_base_hint)
+{
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	char alpha2[3];
+	struct nl_msg *msg;
+
+	msg = nlmsg_alloc();
+	if (!msg)
+		return -ENOMEM;
+
+	/* set the unknown MCC to "99" */
+	if (alpha2_arg[0] == 'Z' && alpha2_arg[1] == 'Z') {
+		alpha2[0] = '9';
+		alpha2[1] = '9';
+	} else {
+		alpha2[0] = alpha2_arg[0];
+		alpha2[1] = alpha2_arg[1];
+	}
+
+	alpha2[2] = '\0';
+
+	nl80211_cmd(drv, msg, 0, NL80211_CMD_REQ_SET_REG);
+
+	NLA_PUT_STRING(msg, NL80211_ATTR_REG_ALPHA2, alpha2);
+
+	if (cell_base_hint)
+		NLA_PUT_U32(msg, NL80211_ATTR_USER_REG_HINT_TYPE,
+			    NL80211_USER_REG_HINT_CELL_BASE);
+
+	wpa_printf(MSG_DEBUG, "nl80211: set country to %s cell base hint: %d",
+		   alpha2, cell_base_hint);
+	if (send_and_recv_msgs(drv, msg, NULL, NULL))
+		goto nla_put_failure;
+
+	return 0;
+nla_put_failure:
+	nlmsg_free(msg);
+	return -EINVAL;
+}
+
+
 /**
  * wpa_driver_nl80211_set_country - ask nl80211 to set the regulatory domain
  * @priv: driver_nl80211 private data
@@ -3199,28 +3242,7 @@ static void wpa_driver_nl80211_event_receive(int sock, void *eloop_ctx,
  */
 static int wpa_driver_nl80211_set_country(void *priv, const char *alpha2_arg)
 {
-	struct i802_bss *bss = priv;
-	struct wpa_driver_nl80211_data *drv = bss->drv;
-	char alpha2[3];
-	struct nl_msg *msg;
-
-	msg = nlmsg_alloc();
-	if (!msg)
-		return -ENOMEM;
-
-	alpha2[0] = alpha2_arg[0];
-	alpha2[1] = alpha2_arg[1];
-	alpha2[2] = '\0';
-
-	nl80211_cmd(drv, msg, 0, NL80211_CMD_REQ_SET_REG);
-
-	NLA_PUT_STRING(msg, NL80211_ATTR_REG_ALPHA2, alpha2);
-	if (send_and_recv_msgs(drv, msg, NULL, NULL))
-		return -EINVAL;
-	return 0;
-nla_put_failure:
-	nlmsg_free(msg);
-	return -EINVAL;
+	return nl80211_set_country(priv, alpha2_arg, 0);
 }
 
 
@@ -11486,6 +11508,15 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					  state);
 	} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
 		ret = wpa_driver_nl80211_set_low_latency(bss, atoi(cmd + 9));
+	} else if (os_strncasecmp(cmd, "COUNTRY ", 8) == 0) {
+		/*
+		 * don't do anything on P2P interface - avoid double "set"
+		 * from the android framework
+		 */
+		if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+			return 0;
+
+		return nl80211_set_country(priv, cmd + 8, 1);
 	} else { /* Use private command */
 		memset(&ifr, 0, sizeof(ifr));
 		memset(&priv_cmd, 0, sizeof(priv_cmd));
