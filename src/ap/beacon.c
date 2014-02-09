@@ -303,6 +303,59 @@ static u8 * hostapd_eid_secondary_channel(struct hostapd_data *hapd, u8 *eid)
 	return eid;
 }
 
+static u8 *hostapd_eid_wb_chsw_wrapper(struct hostapd_data *hapd, u8 *eid)
+{
+	u8 bw, chan1, chan2 = 0;
+	int freq1;
+
+	if (!hapd->iface->cs_freq_params.vht_enabled)
+		return eid;
+
+	/* bandwidth: 0: 40, 1: 80, 2: 160, 3: 80+80 */
+	switch (hapd->iface->cs_freq_params.bandwidth) {
+	case 40:
+		bw = 0;
+		break;
+	case 80:
+		/* check if it's 80+80 */
+		if (!hapd->iface->cs_freq_params.center_freq2)
+			bw = 1;
+		else
+			bw = 3;
+		break;
+	case 160:
+		bw = 2;
+		break;
+	default:
+		/* not valid VHT bandwidth or not in csa */
+		return eid;
+	}
+
+	freq1 = hapd->iface->cs_freq_params.center_freq1 ?
+		hapd->iface->cs_freq_params.center_freq1 :
+		hapd->iface->cs_freq_params.freq;
+	if (ieee80211_freq_to_chan(freq1, &chan1) !=
+	    HOSTAPD_MODE_IEEE80211A)
+		return eid;
+
+	if (hapd->iface->cs_freq_params.center_freq2) {
+		if (ieee80211_freq_to_chan(
+			hapd->iface->cs_freq_params.center_freq2,
+			&chan2) !=
+		    HOSTAPD_MODE_IEEE80211A)
+			return eid;
+	}
+
+	*eid++ = WLAN_EID_VHT_CHANNEL_SWITCH_WRAPPER;
+	*eid++ = 5; /* length of ch. sw. wrapper */
+	*eid++ = WLAN_EID_VHT_WIDE_BW_CHSWITCH;
+	*eid++ = 3;
+	*eid++ = bw;
+	*eid++ = chan1;
+	*eid++ = chan2;
+
+	return eid;
+}
 
 static u8 * hostapd_add_csa_elems(struct hostapd_data *hapd, u8 *pos,
 				  u8 *start, unsigned int *csa_counter_off)
@@ -319,6 +372,7 @@ static u8 * hostapd_add_csa_elems(struct hostapd_data *hapd, u8 *pos,
 		/* save an offset to the counter - should be last byte */
 		*csa_counter_off = pos - start - 1;
 		pos = hostapd_eid_secondary_channel(hapd, pos);
+		pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
 	}
 
 	return pos;
