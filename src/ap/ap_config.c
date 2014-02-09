@@ -182,6 +182,7 @@ struct hostapd_config * hostapd_config_defaults(void)
 	conf->acs_num_scans = 5;
 #endif /* CONFIG_ACS */
 
+	conf->hw_mode = HOSTAPD_MODE_IEEE80211G;
 	return conf;
 }
 
