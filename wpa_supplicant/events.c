@@ -2744,6 +2744,11 @@ static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
 		free_hw_features(ifs);
 		ifs->hw.modes = wpa_drv_get_hw_feature_data(
 			ifs, &ifs->hw.num_modes, &ifs->hw.flags);
+
+		if (ifs->pno) {
+			wpa_supplicant_stop_pno(ifs);
+			wpa_supplicant_start_pno(ifs);
+		}
 	}
 
 #ifdef CONFIG_P2P
