@@ -36,8 +36,8 @@ int wpas_p2p_group_add(struct wpa_supplicant *wpa_s, int persistent_group,
 		       int freq, int ht40, int vht);
 int wpas_p2p_group_add_persistent(struct wpa_supplicant *wpa_s,
 				  struct wpa_ssid *ssid, int addr_allocated,
-				  int freq, int ht40, int vht,
-				  const struct p2p_channels *channels,
+				  int force_freq, int neg_freq, int ht40,
+				  int vht, const struct p2p_channels *channels,
 				  int connection_timeout);
 struct p2p_group * wpas_p2p_group_init(struct wpa_supplicant *wpa_s,
 				       struct wpa_ssid *ssid);
@@ -148,6 +148,16 @@ void wpas_p2p_new_psk_cb(struct wpa_supplicant *wpa_s, const u8 *mac_addr,
 			 const u8 *psk, size_t psk_len);
 void wpas_p2p_remove_client(struct wpa_supplicant *wpa_s, const u8 *peer,
 			    int iface_addr);
+struct wpabuf * wpas_p2p_nfc_handover_req(struct wpa_supplicant *wpa_s,
+					  int ndef);
+struct wpabuf * wpas_p2p_nfc_handover_sel(struct wpa_supplicant *wpa_s,
+					  int ndef, int tag);
+int wpas_p2p_nfc_tag_process(struct wpa_supplicant *wpa_s,
+			     const struct wpabuf *data, int forced_freq);
+int wpas_p2p_nfc_report_handover(struct wpa_supplicant *wpa_s, int init,
+				 const struct wpabuf *req,
+				 const struct wpabuf *sel, int forced_freq);
+int wpas_p2p_nfc_tag_enabled(struct wpa_supplicant *wpa_s, int enabled);
 void wpas_p2p_reset(struct wpa_supplicant *wpa_s);
 
 void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s);

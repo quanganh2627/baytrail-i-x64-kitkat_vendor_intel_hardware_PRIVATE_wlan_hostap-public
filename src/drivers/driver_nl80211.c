@@ -28,6 +28,7 @@
 #include "common.h"
 #include "eloop.h"
 #include "utils/list.h"
+#include "common/qca-vendor.h"
 #include "common/ieee802_11_defs.h"
 #include "common/ieee802_11_common.h"
 #include "l2_packet/l2_packet.h"
@@ -1557,6 +1558,33 @@ static void mlme_event_disconnect(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static int calculate_chan_offset(int width, int freq, int cf1, int cf2)
+{
+	int freq1 = 0;
+
+	switch (convert2width(width)) {
+	case CHAN_WIDTH_20_NOHT:
+	case CHAN_WIDTH_20:
+		return 0;
+	case CHAN_WIDTH_40:
+		freq1 = cf1 - 10;
+		break;
+	case CHAN_WIDTH_80:
+		freq1 = cf1 - 30;
+		break;
+	case CHAN_WIDTH_160:
+		freq1 = cf1 - 70;
+		break;
+	case CHAN_WIDTH_UNKNOWN:
+	case CHAN_WIDTH_80P80:
+		/* FIXME: implement this */
+		return 0;
+	}
+
+	return (abs(freq - freq1) / 20) % 2 == 0 ? 1 : -1;
+}
+
+
 static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 				 struct nlattr *ifindex, struct nlattr *freq,
 				 struct nlattr *type, struct nlattr *bw,
@@ -1598,6 +1626,14 @@ static void mlme_event_ch_switch(struct wpa_driver_nl80211_data *drv,
 			chan_offset = -1;
 			break;
 		}
+	} else if (bw && cf1) {
+		/* This can happen for example with VHT80 ch switch */
+		chan_offset = calculate_chan_offset(nla_get_u32(bw),
+						    nla_get_u32(freq),
+						    nla_get_u32(cf1),
+						    cf2 ? nla_get_u32(cf2) : 0);
+	} else {
+		wpa_printf(MSG_WARNING, "nl80211: Unknown secondary channel information - following channel definition calculations may fail");
 	}
 
 	os_memset(&data, 0, sizeof(data));
@@ -2724,6 +2760,69 @@ static void nl80211_spurious_frame(struct i802_bss *bss, struct nlattr **tb,
 }
 
 
+static void qca_nl80211_avoid_freq(struct wpa_driver_nl80211_data *drv,
+				   const u8 *data, size_t len)
+{
+	u32 i, count;
+	union wpa_event_data event;
+	struct wpa_freq_range *range = NULL;
+	const struct qca_avoid_freq_list *freq_range;
+
+	freq_range = (const struct qca_avoid_freq_list *) data;
+	if (len < sizeof(freq_range->count))
+		return;
+
+	count = freq_range->count;
+	if (len < sizeof(freq_range->count) +
+	    count * sizeof(struct qca_avoid_freq_range)) {
+		wpa_printf(MSG_DEBUG, "nl80211: Ignored too short avoid frequency list (len=%u)",
+			   (unsigned int) len);
+		return;
+	}
+
+	if (count > 0) {
+		range = os_calloc(count, sizeof(struct wpa_freq_range));
+		if (range == NULL)
+			return;
+	}
+
+	os_memset(&event, 0, sizeof(event));
+	for (i = 0; i < count; i++) {
+		unsigned int idx = event.freq_range.num;
+		range[idx].min = freq_range->range[i].start_freq;
+		range[idx].max = freq_range->range[i].end_freq;
+		wpa_printf(MSG_DEBUG, "nl80211: Avoid frequency range: %u-%u",
+			   range[idx].min, range[idx].max);
+		if (range[idx].min > range[idx].max) {
+			wpa_printf(MSG_DEBUG, "nl80211: Ignore invalid frequency range");
+			continue;
+		}
+		event.freq_range.num++;
+	}
+	event.freq_range.range = range;
+
+	wpa_supplicant_event(drv->ctx, EVENT_AVOID_FREQUENCIES, &event);
+
+	os_free(range);
+}
+
+
+static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
+				     u32 subcmd, u8 *data, size_t len)
+{
+	switch (subcmd) {
+	case QCA_NL80211_VENDOR_SUBCMD_AVOID_FREQUENCY:
+		qca_nl80211_avoid_freq(drv, data, len);
+		break;
+	default:
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Ignore unsupported QCA vendor event %u",
+			   subcmd);
+		break;
+	}
+}
+
+
 static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 				 struct nlattr **tb)
 {
@@ -2759,6 +2858,9 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	}
 
 	switch (vendor_id) {
+	case OUI_QCA:
+		nl80211_vendor_event_qca(drv, subcmd, data, len);
+		break;
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
 		break;
@@ -2906,8 +3008,10 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 	case NL80211_CMD_REG_BEACON_HINT:
 		wpa_printf(MSG_DEBUG, "nl80211: Regulatory beacon hint");
+		os_memset(&data, 0, sizeof(data));
+		data.channel_list_changed.initiator = REGDOM_BEACON_HINT;
 		wpa_supplicant_event(drv->ctx, EVENT_CHANNEL_LIST_CHANGED,
-				     NULL);
+				     &data);
 		break;
 	case NL80211_CMD_NEW_STATION:
 		nl80211_new_station_event(drv, tb);
@@ -4823,6 +4927,8 @@ static int wpa_driver_nl80211_scan(struct i802_bss *bss,
 		wpa_printf(MSG_DEBUG, "nl80211: Scan trigger failed: ret=%d "
 			   "(%s)", ret, strerror(-ret));
 		if (drv->hostapd && is_ap_interface(drv->nlmode)) {
+			enum nl80211_iftype old_mode = drv->nlmode;
+
 			/*
 			 * mac80211 does not allow scan requests in AP mode, so
 			 * try to do this in station mode.
@@ -4837,7 +4943,7 @@ static int wpa_driver_nl80211_scan(struct i802_bss *bss,
 			}
 
 			/* Restore AP mode when processing scan results */
-			drv->ap_scan_as_station = drv->nlmode;
+			drv->ap_scan_as_station = old_mode;
 			ret = 0;
 		} else
 			goto nla_put_failure;
@@ -4919,10 +5025,20 @@ static int wpa_driver_nl80211_sched_scan(void *priv,
 			NLA_PUT(msg, NL80211_ATTR_SCHED_SCAN_MATCH_SSID,
 				drv->filter_ssids[i].ssid_len,
 				drv->filter_ssids[i].ssid);
+			if (params->filter_rssi)
+				NLA_PUT_U32(msg,
+					    NL80211_SCHED_SCAN_MATCH_ATTR_RSSI,
+					    params->filter_rssi);
 
 			nla_nest_end(msg, match_set_ssid);
 		}
 
+		/*
+		 * Due to backward compatibility code, newer kernels treat this
+		 * matchset (with only an RSSI filter) as the default for all
+		 * other matchsets, unless it's the only one, in which case the
+		 * matchset will actually allow all SSIDs above the RSSI.
+		 */
 		if (params->filter_rssi) {
 			struct nlattr *match_set_rssi;
 			match_set_rssi = nla_nest_start(msg, 0);
@@ -6499,6 +6615,23 @@ static void nl80211_reg_rule_vht(struct nlattr *tb[],
 }
 
 
+static const char * dfs_domain_name(enum nl80211_dfs_regions region)
+{
+	switch (region) {
+	case NL80211_DFS_UNSET:
+		return "DFS-UNSET";
+	case NL80211_DFS_FCC:
+		return "DFS-FCC";
+	case NL80211_DFS_ETSI:
+		return "DFS-ETSI";
+	case NL80211_DFS_JP:
+		return "DFS-JP";
+	default:
+		return "DFS-invalid";
+	}
+}
+
+
 static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 {
 	struct phy_info_arg *results = arg;
@@ -6525,8 +6658,16 @@ static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 		return NL_SKIP;
 	}
 
-	wpa_printf(MSG_DEBUG, "nl80211: Regulatory information - country=%s",
-		   (char *) nla_data(tb_msg[NL80211_ATTR_REG_ALPHA2]));
+	if (tb_msg[NL80211_ATTR_DFS_REGION]) {
+		enum nl80211_dfs_regions dfs_domain;
+		dfs_domain = nla_get_u8(tb_msg[NL80211_ATTR_DFS_REGION]);
+		wpa_printf(MSG_DEBUG, "nl80211: Regulatory information - country=%s (%s)",
+			   (char *) nla_data(tb_msg[NL80211_ATTR_REG_ALPHA2]),
+			   dfs_domain_name(dfs_domain));
+	} else {
+		wpa_printf(MSG_DEBUG, "nl80211: Regulatory information - country=%s",
+			   (char *) nla_data(tb_msg[NL80211_ATTR_REG_ALPHA2]));
+	}
 
 	nla_for_each_nested(nl_rule, tb_msg[NL80211_ATTR_REG_RULES], rem_rule)
 	{
@@ -10578,6 +10719,9 @@ static int survey_handler(struct nl_msg *msg, void *arg)
 
 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 		  genlmsg_attrlen(gnlh, 0), NULL);
+
+	if (!tb[NL80211_ATTR_IFINDEX])
+		return NL_SKIP;
 
 	ifidx = nla_get_u32(tb[NL80211_ATTR_IFINDEX]);
 

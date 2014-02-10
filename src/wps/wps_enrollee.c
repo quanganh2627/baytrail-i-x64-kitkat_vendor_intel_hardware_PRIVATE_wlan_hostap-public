@@ -243,54 +243,30 @@ static int wps_build_cred_ssid(struct wps_data *wps, struct wpabuf *msg)
 
 static int wps_build_cred_auth_type(struct wps_data *wps, struct wpabuf *msg)
 {
-	u16 auth_type = wps->wps->auth_types;
-
-	/* Select the best authentication type */
-	if (auth_type & WPS_AUTH_WPA2PSK)
-		auth_type = WPS_AUTH_WPA2PSK;
-	else if (auth_type & WPS_AUTH_WPAPSK)
-		auth_type = WPS_AUTH_WPAPSK;
-	else if (auth_type & WPS_AUTH_OPEN)
-		auth_type = WPS_AUTH_OPEN;
-	else if (auth_type & WPS_AUTH_SHARED)
-		auth_type = WPS_AUTH_SHARED;
-
-	wpa_printf(MSG_DEBUG, "WPS:  * Authentication Type (0x%x)", auth_type);
+	wpa_printf(MSG_DEBUG, "WPS:  * Authentication Type (0x%x)",
+		   wps->wps->ap_auth_type);
 	wpabuf_put_be16(msg, ATTR_AUTH_TYPE);
 	wpabuf_put_be16(msg, 2);
-	wpabuf_put_be16(msg, auth_type);
+	wpabuf_put_be16(msg, wps->wps->ap_auth_type);
 	return 0;
 }
 
 
 static int wps_build_cred_encr_type(struct wps_data *wps, struct wpabuf *msg)
 {
-	u16 encr_type = wps->wps->encr_types;
-
-	/* Select the best encryption type */
-	if (wps->wps->auth_types & (WPS_AUTH_WPA2PSK | WPS_AUTH_WPAPSK)) {
-		if (encr_type & WPS_ENCR_AES)
-			encr_type = WPS_ENCR_AES;
-		else if (encr_type & WPS_ENCR_TKIP)
-			encr_type = WPS_ENCR_TKIP;
-	} else {
-		if (encr_type & WPS_ENCR_WEP)
-			encr_type = WPS_ENCR_WEP;
-		else if (encr_type & WPS_ENCR_NONE)
-			encr_type = WPS_ENCR_NONE;
-	}
-
-	wpa_printf(MSG_DEBUG, "WPS:  * Encryption Type (0x%x)", encr_type);
+	wpa_printf(MSG_DEBUG, "WPS:  * Encryption Type (0x%x)",
+		   wps->wps->ap_encr_type);
 	wpabuf_put_be16(msg, ATTR_ENCR_TYPE);
 	wpabuf_put_be16(msg, 2);
-	wpabuf_put_be16(msg, encr_type);
+	wpabuf_put_be16(msg, wps->wps->ap_encr_type);
 	return 0;
 }
 
 
 static int wps_build_cred_network_key(struct wps_data *wps, struct wpabuf *msg)
 {
-	wpa_printf(MSG_DEBUG, "WPS:  * Network Key");
+	wpa_printf(MSG_DEBUG, "WPS:  * Network Key (len=%u)",
+		   (unsigned int) wps->wps->network_key_len);
 	wpabuf_put_be16(msg, ATTR_NETWORK_KEY);
 	wpabuf_put_be16(msg, wps->wps->network_key_len);
 	wpabuf_put_data(msg, wps->wps->network_key, wps->wps->network_key_len);
@@ -310,6 +286,9 @@ static int wps_build_cred_mac_addr(struct wps_data *wps, struct wpabuf *msg)
 
 static int wps_build_ap_settings(struct wps_data *wps, struct wpabuf *plain)
 {
+	const u8 *start, *end;
+	int ret;
+
 	if (wps->wps->ap_settings) {
 		wpa_printf(MSG_DEBUG, "WPS:  * AP Settings (pre-configured)");
 		wpabuf_put_data(plain, wps->wps->ap_settings,
@@ -317,11 +296,19 @@ static int wps_build_ap_settings(struct wps_data *wps, struct wpabuf *plain)
 		return 0;
 	}
 
-	return wps_build_cred_ssid(wps, plain) ||
+	wpa_printf(MSG_DEBUG, "WPS:  * AP Settings based on current configuration");
+	start = wpabuf_put(plain, 0);
+	ret = wps_build_cred_ssid(wps, plain) ||
 		wps_build_cred_mac_addr(wps, plain) ||
 		wps_build_cred_auth_type(wps, plain) ||
 		wps_build_cred_encr_type(wps, plain) ||
 		wps_build_cred_network_key(wps, plain);
+	end = wpabuf_put(plain, 0);
+
+	wpa_hexdump_key(MSG_DEBUG, "WPS: Plaintext AP Settings",
+			start, end - start);
+
+	return ret;
 }
 
 
@@ -512,6 +499,24 @@ static int wps_process_pubkey(struct wps_data *wps, const u8 *pk,
 	if (pk == NULL || pk_len == 0) {
 		wpa_printf(MSG_DEBUG, "WPS: No Public Key received");
 		return -1;
+	}
+
+	if (wps->peer_pubkey_hash_set) {
+		u8 hash[WPS_HASH_LEN];
+		sha256_vector(1, &pk, &pk_len, hash);
+		if (os_memcmp(hash, wps->peer_pubkey_hash,
+			      WPS_OOB_PUBKEY_HASH_LEN) != 0) {
+			wpa_printf(MSG_ERROR, "WPS: Public Key hash mismatch");
+			wpa_hexdump(MSG_DEBUG, "WPS: Received public key",
+				    pk, pk_len);
+			wpa_hexdump(MSG_DEBUG, "WPS: Calculated public key "
+				    "hash", hash, WPS_OOB_PUBKEY_HASH_LEN);
+			wpa_hexdump(MSG_DEBUG, "WPS: Expected public key hash",
+				    wps->peer_pubkey_hash,
+				    WPS_OOB_PUBKEY_HASH_LEN);
+			wps->config_error = WPS_CFG_PUBLIC_KEY_HASH_MISMATCH;
+			return -1;
+		}
 	}
 
 	wpabuf_free(wps->dh_pubkey_r);
@@ -928,6 +933,38 @@ static enum wps_process_res wps_process_m2(struct wps_data *wps,
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
 	}
+
+#ifdef CONFIG_WPS_NFC
+	if (wps->peer_pubkey_hash_set) {
+		struct wpabuf *decrypted;
+		struct wps_parse_attr eattr;
+
+		decrypted = wps_decrypt_encr_settings(wps, attr->encr_settings,
+						      attr->encr_settings_len);
+		if (decrypted == NULL) {
+			wpa_printf(MSG_DEBUG, "WPS: Failed to decrypt "
+				   "Encrypted Settings attribute");
+			wps->state = SEND_WSC_NACK;
+			return WPS_CONTINUE;
+		}
+
+		wpa_printf(MSG_DEBUG, "WPS: Processing decrypted Encrypted "
+			   "Settings attribute");
+		if (wps_parse_msg(decrypted, &eattr) < 0 ||
+		    wps_process_key_wrap_auth(wps, decrypted,
+					      eattr.key_wrap_auth) ||
+		    wps_process_creds(wps, eattr.cred, eattr.cred_len,
+				      eattr.num_cred, attr->version2 != NULL)) {
+			wpabuf_free(decrypted);
+			wps->state = SEND_WSC_NACK;
+			return WPS_CONTINUE;
+		}
+		wpabuf_free(decrypted);
+
+		wps->state = WPS_MSG_DONE;
+		return WPS_CONTINUE;
+	}
+#endif /* CONFIG_WPS_NFC */
 
 	wps->state = SEND_M3;
 	return WPS_CONTINUE;
