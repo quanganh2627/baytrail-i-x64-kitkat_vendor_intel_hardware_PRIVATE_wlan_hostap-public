@@ -70,7 +70,19 @@ static struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
 					      p2p->op_channel);
 	if (p2p->inv_bssid_set)
 		p2p_buf_add_group_bssid(buf, p2p->inv_bssid);
-	p2p_buf_add_channel_list(buf, p2p->cfg->country, &p2p->channels);
+
+	if (p2p->inv_role == P2P_INVITE_ROLE_CLIENT) {
+		struct p2p_channels req_channels;
+		p2p_channels_union(&p2p->channels, &p2p->cfg->cli_channels,
+				   &req_channels);
+
+		p2p_buf_add_channel_list(buf, p2p->cfg->country,
+					 &req_channels);
+	} else {
+		p2p_buf_add_channel_list(buf, p2p->cfg->country,
+					 &p2p->channels);
+	}
+
 	if (go_dev_addr)
 		dev_addr = go_dev_addr;
 	else if (p2p->inv_role == P2P_INVITE_ROLE_CLIENT)
