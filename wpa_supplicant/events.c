@@ -2745,6 +2745,12 @@ static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
 		ifs->hw.modes = wpa_drv_get_hw_feature_data(
 			ifs, &ifs->hw.num_modes, &ifs->hw.flags);
 
+		/*
+		 * prevent station interfaces from connecting on invalid
+		 * channels
+		 */
+		wpa_bss_flush(ifs);
+
 		if (ifs->pno) {
 			wpa_supplicant_stop_pno(ifs);
 			wpa_supplicant_start_pno(ifs);

@@ -5,5 +5,5 @@
 #define VERSION_STR_POSTFIX ""
 #endif /* VERSION_STR_POSTFIX */
 
-#define VERSION_STR "2.0-WCD-hostap-public-72cb16708d7ccb53ffca4e6f9999255c4777caa9" VERSION_STR_POSTFIX
+#define VERSION_STR "2.0-WCD-hostap-public-2a45038397ba6dda4c63854d65ab68fb28bf1a56" VERSION_STR_POSTFIX
 #endif /* VERSION_H */
