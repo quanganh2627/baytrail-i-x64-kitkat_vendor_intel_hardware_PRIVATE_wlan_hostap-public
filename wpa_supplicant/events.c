@@ -2769,6 +2769,23 @@ static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
 	}
 
 #ifdef CONFIG_P2P
+	/*
+	 * The updated country might be different from the one set to the
+	 * driver. Sometimes we set "no country" as the code. Using the
+	 * invalid "00" code is fine as well, as long as the table index is
+	 * 0x04.
+	 */
+	if (wpa_s->global && wpa_s->global->p2p) {
+		char country[4];
+		if (wpa_drv_get_country(wpa_s, country) == 0) {
+			wpa_printf(MSG_DEBUG, "Country from driver: %c%c",
+				   country[0], country[1]);
+			country[2] = 0x04; /* use the global table */
+			country[3] = 0;
+			p2p_set_country(wpa_s->global->p2p, country);
+		}
+	}
+
 	wpas_p2p_update_channel_list(wpa_s);
 #endif /* CONFIG_P2P */
 }
