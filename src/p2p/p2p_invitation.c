@@ -76,6 +76,11 @@ static struct wpabuf * p2p_build_invitation_req(struct p2p_data *p2p,
 		p2p_channels_union(&p2p->channels, &p2p->cfg->cli_channels,
 				   &req_channels);
 
+		if (p2p_is_indoor_device(&peer->info))
+			p2p_channels_union(&req_channels,
+					   &p2p->cfg->indoor_channels,
+					   &req_channels);
+
 		p2p_buf_add_channel_list(buf, p2p->cfg->country,
 					 &req_channels);
 	} else {
