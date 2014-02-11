@@ -1138,6 +1138,8 @@ int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
 	scan_params = &params;
 
 scan:
+	wpa_s->sched_scan_timed_out = 0;
+
 	if (ssid || !wpa_s->first_sched_scan) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"Starting sched scan: interval %d timeout %d",
@@ -1163,7 +1165,6 @@ scan:
 
 	/* If we have more SSIDs to scan, add a timeout so we scan them too */
 	if (ssid || !wpa_s->first_sched_scan) {
-		wpa_s->sched_scan_timed_out = 0;
 		eloop_register_timeout(wpa_s->sched_scan_timeout, 0,
 				       wpa_supplicant_sched_scan_timeout,
 				       wpa_s, NULL);
