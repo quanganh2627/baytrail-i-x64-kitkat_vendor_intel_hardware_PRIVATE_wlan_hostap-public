@@ -1200,6 +1200,34 @@ not_allowed:
 }
 
 
+static void p2p_prepare_channel_best_no_pref(struct p2p_data *p2p)
+{
+	u8 op_class, op_channel;
+	unsigned int i, r;
+	int freq;
+
+	os_get_random((u8 *)&r, sizeof(r));
+
+	for (i = 0; i < 3; i++) {
+		freq = 2412 + ((r + i) % 3) * 25;
+		if (p2p_supported_freq(p2p, freq) &&
+		    p2p_freq_to_channel(freq, &op_class, &op_channel) == 0) {
+			p2p_dbg(p2p,
+				"Select random social channel %d as operating channel",
+				op_channel);
+			goto out;
+		}
+	}
+
+	p2p_err(p2p,
+		"Non of the social channels can be used as an operating channel");
+
+out:
+	p2p->op_reg_class = op_class;
+	p2p->op_channel = op_channel;
+}
+
+
 static void p2p_prepare_channel_best(struct p2p_data *p2p)
 {
 	u8 op_class, op_channel;
@@ -1252,10 +1280,12 @@ static void p2p_prepare_channel_best(struct p2p_data *p2p)
 		   0) {
 		p2p_dbg(p2p, "Select possible 5 GHz channel (op_class %u channel %u) as operating channel preference",
 			p2p->op_reg_class, p2p->op_channel);
-	} else {
+	} else if (p2p->cfg->cfg_op_channel) {
 		p2p_dbg(p2p, "Select pre-configured channel as operating channel preference");
 		p2p->op_reg_class = p2p->cfg->op_reg_class;
 		p2p->op_channel = p2p->cfg->op_channel;
+	} else {
+		p2p_prepare_channel_best_no_pref(p2p);
 	}
 
 	os_memcpy(&p2p->channels, &p2p->cfg->channels,

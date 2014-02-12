@@ -4056,16 +4056,8 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 			   "%d:%d", p2p.op_reg_class, p2p.op_channel);
 
 	} else {
-		p2p.op_reg_class = 81;
-		/*
-		 * Use random operation channel from (1, 6, 11) if no other
-		 * preference is indicated.
-		 */
-		os_get_random((u8 *) &r, sizeof(r));
-		p2p.op_channel = 1 + (r % 3) * 5;
 		p2p.cfg_op_channel = 0;
-		wpa_printf(MSG_DEBUG, "P2P: Random operating channel: "
-			   "%d:%d", p2p.op_reg_class, p2p.op_channel);
+		wpa_printf(MSG_DEBUG, "P2P: No operating channel configured");
 	}
 
 	if (wpa_s->conf->p2p_pref_chan && wpa_s->conf->num_p2p_pref_chan) {
@@ -6467,24 +6459,16 @@ void wpas_p2p_update_config(struct wpa_supplicant *wpa_s)
 				   "failed: %d", ret);
 	}
 	if (wpa_s->conf->changed_parameters & CFG_CHANGED_P2P_OPER_CHANNEL) {
-		u8 op_reg_class, op_channel, cfg_op_channel;
+		u8 op_reg_class = 0, op_channel = 0, cfg_op_channel = 0;
 		int ret = 0;
-		unsigned int r;
+
 		if (wpa_s->conf->p2p_oper_reg_class &&
 		    wpa_s->conf->p2p_oper_channel) {
 			op_reg_class = wpa_s->conf->p2p_oper_reg_class;
 			op_channel = wpa_s->conf->p2p_oper_channel;
 			cfg_op_channel = 1;
-		} else {
-			op_reg_class = 81;
-			/*
-			 * Use random operation channel from (1, 6, 11)
-			 *if no other preference is indicated.
-			 */
-			os_get_random((u8 *) &r, sizeof(r));
-			op_channel = 1 + (r % 3) * 5;
-			cfg_op_channel = 0;
 		}
+
 		ret = p2p_set_oper_channel(p2p, op_reg_class, op_channel,
 					   cfg_op_channel);
 		if (ret)
