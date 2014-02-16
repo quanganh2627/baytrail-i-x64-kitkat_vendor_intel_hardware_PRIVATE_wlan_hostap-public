@@ -2737,28 +2737,18 @@ static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
 	if (wpa_s->drv_priv == NULL)
 		return; /* Ignore event during drv initialization */
 
-	free_hw_features(wpa_s);
-	wpa_s->hw.modes = wpa_drv_get_hw_feature_data(
-		wpa_s, &wpa_s->hw.num_modes, &wpa_s->hw.flags);
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		wpa_printf(MSG_DEBUG, "%s: Updating hw mode",
+			   ifs->ifname);
+		free_hw_features(ifs);
+		ifs->hw.modes = wpa_drv_get_hw_feature_data(
+			ifs, &ifs->hw.num_modes, &ifs->hw.flags);
+	}
 
 #ifdef CONFIG_P2P
 	wpas_p2p_update_channel_list(wpa_s);
 #endif /* CONFIG_P2P */
-
-	/*
-	 * Check other interfaces to see if they share the same radio. If
-	 * so, they get updated with this same hw mode info.
-	 */
-	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
-			 radio_list) {
-		if (ifs != wpa_s) {
-			wpa_printf(MSG_DEBUG, "%s: Updating hw mode",
-				   ifs->ifname);
-			free_hw_features(ifs);
-			ifs->hw.modes = wpa_drv_get_hw_feature_data(
-				ifs, &ifs->hw.num_modes, &ifs->hw.flags);
-		}
-	}
 }
 
 
