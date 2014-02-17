@@ -311,11 +311,6 @@ static struct wpabuf * p2p_build_go_neg_resp(struct p2p_data *p2p,
 		p2p_channels_union(&p2p->channels, &p2p->cfg->cli_channels,
 				   &resp_channels);
 
-		if (p2p_is_indoor_device(&peer->info))
-			p2p_channels_union(&resp_channels,
-					   &p2p->cfg->indoor_channels,
-					   &resp_channels);
-
 		p2p_buf_add_channel_list(buf, p2p->cfg->country,
 					 &resp_channels);
 	} else {
