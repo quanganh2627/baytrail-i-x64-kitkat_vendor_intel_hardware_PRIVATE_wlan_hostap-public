@@ -306,8 +306,14 @@ static struct wpabuf * p2p_build_go_neg_resp(struct p2p_data *p2p,
 		p2p_buf_add_channel_list(buf, p2p->cfg->country,
 					 &p2p->channels);
 	} else if (peer->go_state == REMOTE_GO) {
+		struct p2p_channels res;
+
+		p2p_channels_union(&p2p->cfg->channels,
+				   &p2p->cfg->cli_channels,
+				   &res);
+
 		p2p_buf_add_channel_list(buf, p2p->cfg->country,
-					 &p2p->channels);
+					 &res);
 	} else {
 		struct p2p_channels res;
 		p2p_channels_intersect(&p2p->channels, &peer->channels,
