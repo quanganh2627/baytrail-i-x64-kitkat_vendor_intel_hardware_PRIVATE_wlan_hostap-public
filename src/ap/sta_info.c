@@ -155,7 +155,7 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 		hostapd_set_wds_sta(hapd, NULL, sta->addr, sta->aid, 0);
 
 	if (hapd->iface->driver_ap_teardown == 0 &&
-			!(sta->flags & WLAN_STA_PREAUTH))
+	    !(sta->flags & WLAN_STA_PREAUTH))
 		hostapd_drv_sta_remove(hapd, sta->addr);
 
 	ap_sta_hash_del(hapd, sta);
