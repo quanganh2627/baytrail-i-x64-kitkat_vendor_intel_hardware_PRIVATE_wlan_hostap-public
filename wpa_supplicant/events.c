@@ -2187,7 +2187,16 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 	if (wpa_s->wpa_state >= WPA_AUTHENTICATING) {
 		int blacklist = !locally_generated ||
 				reason_code != WLAN_REASON_DEAUTH_LEAVING;
-		wpas_connection_failed(wpa_s, bssid, blacklist);
+
+		/*
+		 * The connection shouldn't be failed if we will call
+		 * sme_disassoc_while_authenticating, otherwise we may
+		 * continue the connection, without radio work
+		 * protection.
+		 */
+		if (!authenticating ||
+		    !(wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME))
+			wpas_connection_failed(wpa_s, bssid, blacklist);
 	}
 	wpa_sm_notify_disassoc(wpa_s->wpa);
 	if (locally_generated)
