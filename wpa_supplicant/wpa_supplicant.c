@@ -4573,6 +4573,9 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
+		if (idx == len)
+			break;
+
 		if (wpa_s == ifs)
 			continue;
 
