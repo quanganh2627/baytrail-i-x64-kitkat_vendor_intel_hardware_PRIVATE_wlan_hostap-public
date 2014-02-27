@@ -17,6 +17,8 @@
 #include "scan.h"
 #include "bgscan.h"
 
+#define SIGNAL_TRACKING_MODE_THRESHOLD -82 /* used in signal tracking mode */
+
 struct bgscan_simple_data {
 	struct wpa_supplicant *wpa_s;
 	const struct wpa_ssid *ssid;
@@ -27,6 +29,13 @@ struct bgscan_simple_data {
 	int short_interval; /* use if signal < threshold */
 	int long_interval; /* use if signal > threshold */
 	struct os_reltime last_bgscan;
+	unsigned int signal_tracking_enabled:1;
+
+	/*
+	 * In signal tracking mode, scan is not done periodically, but
+	 * only when signal drops below threshold or further.
+	 */
+	unsigned int signal_tracking_mode;
 };
 
 
@@ -103,6 +112,28 @@ static int bgscan_simple_get_params(struct bgscan_simple_data *data,
 	}
 	pos++;
 	data->long_interval = atoi(pos);
+	pos = os_strchr(pos, ':');
+	if (pos && pos[1] == 't')
+		data->signal_tracking_enabled = 1;
+
+	return 0;
+}
+
+
+static int bgscan_simple_set_signal_monitor(struct bgscan_simple_data *data,
+					    int signal_threshold)
+{
+	struct wpa_signal_info siginfo;
+
+	/* Poll for signal info to set initial scan interval */
+	if (wpa_drv_signal_poll(data->wpa_s, &siginfo) == 0 &&
+	    siginfo.current_signal >= signal_threshold)
+		data->scan_interval = data->long_interval;
+	else
+		data->scan_interval = data->short_interval;
+
+	if (wpa_drv_signal_monitor(data->wpa_s, signal_threshold, 4) < 0)
+		return -1;
 
 	return 0;
 }
@@ -133,21 +164,13 @@ static void * bgscan_simple_init(struct wpa_supplicant *wpa_s,
 		   data->signal_threshold, data->short_interval,
 		   data->long_interval);
 
+	data->max_short_scans = data->long_interval / data->short_interval + 1;
+
 	if (data->signal_threshold &&
-	    wpa_drv_signal_monitor(wpa_s, data->signal_threshold, 4) < 0) {
+	    bgscan_simple_set_signal_monitor(data, data->signal_threshold) < 0)
 		wpa_printf(MSG_ERROR, "bgscan simple: Failed to enable "
 			   "signal strength monitoring");
-	}
 
-	data->scan_interval = data->short_interval;
-	data->max_short_scans = data->long_interval / data->short_interval + 1;
-	if (data->signal_threshold) {
-		/* Poll for signal info to set initial scan interval */
-		struct wpa_signal_info siginfo;
-		if (wpa_drv_signal_poll(wpa_s, &siginfo) == 0 &&
-		    siginfo.current_signal >= data->signal_threshold)
-			data->scan_interval = data->long_interval;
-	}
 	wpa_printf(MSG_DEBUG, "bgscan simple: Init scan interval: %d",
 		   data->scan_interval);
 	eloop_register_timeout(data->scan_interval, 0, bgscan_simple_timeout,
@@ -169,7 +192,7 @@ static void bgscan_simple_deinit(void *priv)
 {
 	struct bgscan_simple_data *data = priv;
 	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
-	if (data->signal_threshold)
+	if (data->signal_threshold || data->signal_tracking_mode)
 		wpa_drv_signal_monitor(data->wpa_s, 0, 0);
 	os_free(data);
 }
@@ -183,8 +206,9 @@ static int bgscan_simple_notify_scan(void *priv,
 	wpa_printf(MSG_DEBUG, "bgscan simple: scan result notification");
 
 	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
-	eloop_register_timeout(data->scan_interval, 0, bgscan_simple_timeout,
-			       data, NULL);
+	if (!data->signal_tracking_mode)
+		eloop_register_timeout(data->scan_interval, 0,
+				       bgscan_simple_timeout, data, NULL);
 
 	/*
 	 * A more advanced bgscan could process scan results internally, select
@@ -212,6 +236,23 @@ static void bgscan_simple_notify_signal_change(void *priv, int above,
 	struct bgscan_simple_data *data = priv;
 	int scan = 0;
 	struct os_reltime now;
+
+	if (data->signal_tracking_mode) {
+		/*
+		 * If the signal dropped below threshold or further 4 dB, always
+		 * scan once immediately because if we don't scan now we won't
+		 * have a chance to roam. Otherwise there is nothing to do
+		 * because we don't do background scanning in signal tracking
+		 * mode anyway.
+		 */
+		if (!above) {
+			wpa_printf(MSG_DEBUG,
+				   "bgscan simple: Trigger immediate scan");
+			eloop_register_timeout(0, 0, bgscan_simple_timeout,
+					       data, NULL);
+		}
+		return;
+	}
 
 	if (data->short_interval == data->long_interval ||
 	    data->signal_threshold == 0)
@@ -272,6 +313,78 @@ static void bgscan_simple_notify_signal_change(void *priv, int above,
 	}
 }
 
+static void bgscan_simple_signal_tracking_mode(struct bgscan_simple_data *data)
+{
+	if (wpa_drv_signal_monitor(data->wpa_s,
+				   SIGNAL_TRACKING_MODE_THRESHOLD, 4) < 0) {
+		wpa_printf(MSG_ERROR,
+			   "bgscan simple: Failed to change signal threshold to %d",
+			   SIGNAL_TRACKING_MODE_THRESHOLD);
+		return;
+	}
+
+	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
+	data->signal_tracking_mode = 1;
+	wpa_printf(MSG_DEBUG, "bgscan_simple: Start signal tracking mode");
+}
+
+static void bgscan_simple_normal_mode(struct bgscan_simple_data *data)
+{
+	struct os_reltime now;
+	int scan_interval;
+
+	data->signal_tracking_mode = 0;
+
+	/*
+	 * If signal monitor was originally set, restore signal threshold.
+	 * Othrewise cancel the signal monitor we set for signal tracking mode.
+	 */
+	if (!data->signal_threshold)
+		wpa_drv_signal_monitor(data->wpa_s, 0, 0);
+	else if (bgscan_simple_set_signal_monitor(data,
+						  data->signal_threshold) < 0)
+		wpa_printf(MSG_ERROR,
+			   "bgscan simple: Failed to restore signal threshold to %d",
+			   data->signal_threshold);
+
+	os_get_reltime(&now);
+
+	/*
+	 * Re-activate background scanning: If we haven't scanned for as long as
+	 * the scan interval, trigger scan immediately. Otherwise wait until the
+	 * scan interval is over.
+	 */
+	if (data->last_bgscan.sec + data->scan_interval > now.sec)
+		scan_interval = data->scan_interval -
+			(now.sec - data->last_bgscan.sec);
+	else
+		scan_interval = 0;
+	eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout, data,
+			       NULL);
+	wpa_printf(MSG_DEBUG, "bgscan_simple: Start periodic mode");
+}
+
+static void bgscan_simple_notify_tcm_changed(void *priv,
+					     enum traffic_load traffic_load,
+					     int vi_vo_present)
+{
+	struct bgscan_simple_data *data = priv;
+	unsigned int need_signal_tracking = traffic_load == TRAFFIC_LOAD_HIGH ||
+		vi_vo_present;
+
+	/*
+	 * If traffic awareness is not set, or the notified change doesn't
+	 * affect bgscan operating mode, ignore this notification.
+	 */
+	if (!data->signal_tracking_enabled ||
+	    data->signal_tracking_mode == need_signal_tracking)
+		return;
+
+	if (need_signal_tracking)
+		bgscan_simple_signal_tracking_mode(data);
+	else
+		bgscan_simple_normal_mode(data);
+}
 
 const struct bgscan_ops bgscan_simple_ops = {
 	.name = "simple",
@@ -280,4 +393,5 @@ const struct bgscan_ops bgscan_simple_ops = {
 	.notify_scan = bgscan_simple_notify_scan,
 	.notify_beacon_loss = bgscan_simple_notify_beacon_loss,
 	.notify_signal_change = bgscan_simple_notify_signal_change,
+	.notify_tcm_changed = bgscan_simple_notify_tcm_changed,
 };
