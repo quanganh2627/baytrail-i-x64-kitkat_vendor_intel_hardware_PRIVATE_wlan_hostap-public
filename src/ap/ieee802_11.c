@@ -945,6 +945,15 @@ static u16 check_assoc_ies(struct hostapd_data *hapd, struct sta_info *sta,
 	} else {
 		wpabuf_free(sta->p2p_ie);
 		sta->p2p_ie = NULL;
+
+		if (hapd->disallow_legacy_clients) {
+			hostapd_logger(hapd, sta->addr,
+				       HOSTAPD_MODULE_IEEE80211,
+				       HOSTAPD_LEVEL_INFO,
+				       "Station is a legacy client and "
+				       "connection to P2P GO is not allowed");
+			return WLAN_STATUS_UNSPECIFIED_FAILURE;
+		}
 	}
 #endif /* CONFIG_P2P */
 

@@ -223,6 +223,7 @@ struct hostapd_data {
 	int noa_enabled;
 	int noa_start;
 	int noa_duration;
+	unsigned int disallow_legacy_clients;
 #endif /* CONFIG_P2P */
 #ifdef CONFIG_INTERWORKING
 	size_t gas_frag_limit;
