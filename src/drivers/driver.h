@@ -406,6 +406,16 @@ struct wpa_driver_associate_params {
 	const u8 *bssid;
 
 	/**
+	 * bssid_hint - BSSID of a proposed AP
+	 *
+	 * This indicates which BSS has been found a suitable candidate for
+	 * initial association for drivers that use driver/firmwate-based BSS
+	 * selection. Unlike the @bssid parameter, @bssid_hint does not limit
+	 * the driver from selecting other BSSes in the ESS.
+	 */
+	const u8 *bssid_hint;
+
+	/**
 	 * ssid - The selected SSID
 	 */
 	const u8 *ssid;
@@ -421,6 +431,16 @@ struct wpa_driver_associate_params {
 	 * reported in the scan results)
 	 */
 	int freq;
+
+	/**
+	 * freq_hint - Frequency of the channel the proposed AP is using
+	 *
+	 * This provides a channel on which a suitable BSS has been found as a
+	 * hint for the driver. Unlike the @freq parameter, @freq_hint does not
+	 * limit the driver from selecting other channels for
+	 * driver/firmware-based BSS selection.
+	 */
+	int freq_hint;
 
 	/**
 	 * bg_scan_period - Background scan period in seconds, 0 to disable
@@ -829,6 +849,11 @@ struct wpa_driver_ap_params {
 	 * disable_dgaf - Whether group-addressed frames are disabled
 	 */
 	int disable_dgaf;
+
+	/**
+	 * osen - Whether OSEN security is enabled
+	 */
+	int osen;
 };
 
 /**
@@ -858,6 +883,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_CAPA_ENC_BIP_GMAC_128	0x00000200
 #define WPA_DRIVER_CAPA_ENC_BIP_GMAC_256	0x00000400
 #define WPA_DRIVER_CAPA_ENC_BIP_CMAC_256	0x00000800
+#define WPA_DRIVER_CAPA_ENC_GTK_NOT_USED	0x00001000
 	unsigned int enc;
 
 #define WPA_DRIVER_AUTH_OPEN		0x00000001
@@ -1012,6 +1038,8 @@ struct hostapd_sta_add_params {
 	u16 listen_interval;
 	const struct ieee80211_ht_capabilities *ht_capabilities;
 	const struct ieee80211_vht_capabilities *vht_capabilities;
+	int vht_opmode_enabled;
+	u8 vht_opmode;
 	u32 flags; /* bitmask of WPA_STA_* flags */
 	int set; /* Set STA parameters instead of add */
 	u8 qosinfo;

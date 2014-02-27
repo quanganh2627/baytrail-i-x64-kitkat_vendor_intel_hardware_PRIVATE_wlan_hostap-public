@@ -347,40 +347,9 @@ int p2p_channels_includes_freq(const struct p2p_channels *channels,
 }
 
 
-#ifdef ANDROID_P2P
-static int p2p_block_op_freq(unsigned int freq)
-{
-	return (freq >= 5170 && freq < 5745);
-}
-
-
-static size_t p2p_copy_reg_class(struct p2p_reg_class *dc,
-				 struct p2p_reg_class *sc)
-{
-	unsigned int i;
-
-	dc->reg_class = sc->reg_class;
-	dc->channels = 0;
-	for (i=0; i < sc->channels; i++) {
-		if (!p2p_block_op_freq(p2p_channel_to_freq(sc->reg_class,
-							   sc->channel[i]))) {
-			dc->channel[dc->channels] = sc->channel[i];
-			dc->channels++;
-		}
-	}
-	return dc->channels;
-}
-#endif
-
-
 int p2p_supported_freq(struct p2p_data *p2p, unsigned int freq)
 {
 	u8 op_reg_class, op_channel;
-
-#ifdef ANDROID_P2P
-	if (p2p_block_op_freq(freq))
-		return 0;
-#endif
 	if (p2p_freq_to_channel(freq, &op_reg_class, &op_channel) < 0)
 		return 0;
 	return p2p_channels_includes(&p2p->cfg->channels, op_reg_class,
@@ -475,13 +444,7 @@ int p2p_channel_select(struct p2p_channels *chans, const int *classes,
 
 	for (j = 0; classes[j]; j++) {
 		for (i = 0; i < chans->reg_classes; i++) {
-#ifdef ANDROID_P2P
-			struct p2p_reg_class prc;
-			struct p2p_reg_class *c = &prc;
-			p2p_copy_reg_class(c, &chans->reg_class[i]);
-#else
 			struct p2p_reg_class *c = &chans->reg_class[i];
-#endif
 
 			if (c->channels == 0)
 				continue;

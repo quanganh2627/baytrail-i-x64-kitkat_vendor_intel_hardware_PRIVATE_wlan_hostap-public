@@ -41,8 +41,7 @@ enum tls_fail_reason {
 	TLS_FAIL_ALTSUBJECT_MISMATCH = 6,
 	TLS_FAIL_BAD_CERTIFICATE = 7,
 	TLS_FAIL_SERVER_CHAIN_PROBE = 8,
-	TLS_FAIL_DOMAIN_SUFFIX_MISMATCH = 9,
-	TLS_FAIL_SERVER_USED_CLIENT_CERT = 10
+	TLS_FAIL_DOMAIN_SUFFIX_MISMATCH = 9
 };
 
 union tls_event_data {
@@ -86,6 +85,8 @@ struct tls_config {
 #define TLS_CONN_DISABLE_SESSION_TICKET BIT(2)
 #define TLS_CONN_REQUEST_OCSP BIT(3)
 #define TLS_CONN_REQUIRE_OCSP BIT(4)
+#define TLS_CONN_DISABLE_TLSv1_1 BIT(5)
+#define TLS_CONN_DISABLE_TLSv1_2 BIT(6)
 
 /**
  * struct tls_connection_params - Parameters for TLS connection

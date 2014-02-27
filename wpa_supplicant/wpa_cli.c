@@ -836,32 +836,6 @@ static int wpa_cli_cmd_nfc_get_handover_sel(struct wpa_ctrl *ctrl, int argc,
 }
 
 
-static int wpa_cli_cmd_nfc_rx_handover_req(struct wpa_ctrl *ctrl, int argc,
-					   char *argv[])
-{
-	int ret;
-	char *buf;
-	size_t buflen;
-
-	if (argc != 1) {
-		printf("Invalid 'nfc_rx_handover_req' command - one argument "
-		       "is required.\n");
-		return -1;
-	}
-
-	buflen = 21 + os_strlen(argv[0]);
-	buf = os_malloc(buflen);
-	if (buf == NULL)
-		return -1;
-	os_snprintf(buf, buflen, "NFC_RX_HANDOVER_REQ %s", argv[0]);
-
-	ret = wpa_ctrl_command(ctrl, buf);
-	os_free(buf);
-
-	return ret;
-}
-
-
 static int wpa_cli_cmd_nfc_rx_handover_sel(struct wpa_ctrl *ctrl, int argc,
 					   char *argv[])
 {
@@ -2324,6 +2298,37 @@ static int wpa_cli_cmd_get_nai_home_realm_list(struct wpa_ctrl *ctrl, int argc,
 	return wpa_ctrl_command(ctrl, cmd);
 }
 
+
+static int wpa_cli_cmd_hs20_icon_request(struct wpa_ctrl *ctrl, int argc,
+					 char *argv[])
+{
+	char cmd[512];
+
+	if (argc < 2) {
+		printf("Command needs two arguments (dst mac addr and "
+		       "icon name)\n");
+		return -1;
+	}
+
+	if (write_cmd(cmd, sizeof(cmd), "HS20_ICON_REQUEST", argc, argv) < 0)
+		return -1;
+
+	return wpa_ctrl_command(ctrl, cmd);
+}
+
+
+static int wpa_cli_cmd_fetch_osu(struct wpa_ctrl *ctrl, int argc, char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "FETCH_OSU");
+}
+
+
+static int wpa_cli_cmd_cancel_fetch_osu(struct wpa_ctrl *ctrl, int argc,
+					char *argv[])
+{
+	return wpa_ctrl_command(ctrl, "CANCEL_FETCH_OSU");
+}
+
 #endif /* CONFIG_HS20 */
 
 
@@ -2673,9 +2678,6 @@ static struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "nfc_get_handover_sel", wpa_cli_cmd_nfc_get_handover_sel, NULL,
 	  cli_cmd_flag_none,
 	  "<NDEF> <WPS> = create NFC handover select" },
-	{ "nfc_rx_handover_req", wpa_cli_cmd_nfc_rx_handover_req, NULL,
-	  cli_cmd_flag_none,
-	  "<hexdump of payload> = report received NFC handover request" },
 	{ "nfc_rx_handover_sel", wpa_cli_cmd_nfc_rx_handover_sel, NULL,
 	  cli_cmd_flag_none,
 	  "<hexdump of payload> = report received NFC handover select" },
@@ -2866,6 +2868,14 @@ static struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "nai_home_realm_list", wpa_cli_cmd_get_nai_home_realm_list,
 	  wpa_cli_complete_bss, cli_cmd_flag_none,
 	  "<addr> <home realm> = get HS20 nai home realm list" },
+	{ "hs20_icon_request", wpa_cli_cmd_hs20_icon_request,
+	  wpa_cli_complete_bss, cli_cmd_flag_none,
+	  "<addr> <icon name> = get Hotspot 2.0 OSU icon" },
+	{ "fetch_osu", wpa_cli_cmd_fetch_osu, NULL, cli_cmd_flag_none,
+	  "= fetch OSU provider information from all APs" },
+	{ "cancel_fetch_osu", wpa_cli_cmd_cancel_fetch_osu, NULL,
+	  cli_cmd_flag_none,
+	  "= cancel fetch_osu command" },
 #endif /* CONFIG_HS20 */
 	{ "sta_autoconnect", wpa_cli_cmd_sta_autoconnect, NULL,
 	  cli_cmd_flag_none,
@@ -3218,6 +3228,10 @@ static void wpa_cli_action_process(const char *msg)
 	} else if (str_match(pos, AP_STA_DISCONNECTED)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
 	} else if (str_match(pos, ESS_DISASSOC_IMMINENT)) {
+		wpa_cli_exec(action_file, ctrl_ifname, pos);
+	} else if (str_match(pos, HS20_SUBSCRIPTION_REMEDIATION)) {
+		wpa_cli_exec(action_file, ctrl_ifname, pos);
+	} else if (str_match(pos, HS20_DEAUTH_IMMINENT_NOTICE)) {
 		wpa_cli_exec(action_file, ctrl_ifname, pos);
 	} else if (str_match(pos, WPA_EVENT_TERMINATING)) {
 		printf("wpa_supplicant is terminating - stop monitoring\n");

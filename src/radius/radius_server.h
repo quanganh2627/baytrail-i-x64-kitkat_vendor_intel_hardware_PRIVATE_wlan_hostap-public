@@ -22,6 +22,11 @@ struct radius_server_conf {
 	int auth_port;
 
 	/**
+	 * acct_port - UDP port to listen to as an accounting server
+	 */
+	int acct_port;
+
+	/**
 	 * client_file - RADIUS client configuration file
 	 *
 	 * This file contains the RADIUS clients and the shared secret to be
@@ -204,6 +209,9 @@ struct radius_server_conf {
 #ifdef CONFIG_RADIUS_TEST
 	const char *dump_msk_file;
 #endif /* CONFIG_RADIUS_TEST */
+
+	char *subscr_remediation_url;
+	u8 subscr_remediation_method;
 };
 
 

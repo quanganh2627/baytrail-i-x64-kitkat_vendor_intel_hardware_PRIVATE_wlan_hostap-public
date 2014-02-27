@@ -75,7 +75,11 @@ L_CFLAGS += -DANDROID422
 endif
 
 ifdef CONFIG_DRIVER_NL80211
+ifneq ($(wildcard external/libnl),)
+INCLUDES += external/libnl/include
+else
 INCLUDES += external/libnl-headers
+endif
 endif
 
 ifdef CONFIG_FIPS
@@ -282,6 +286,7 @@ ifdef CONFIG_HS20
 OBJS += hs20_supplicant.c
 L_CFLAGS += -DCONFIG_HS20
 CONFIG_INTERWORKING=y
+NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_INTERWORKING
@@ -1581,7 +1586,11 @@ LOCAL_SHARED_LIBRARIES += libkeystore_binder
 endif
 
 ifdef CONFIG_DRIVER_NL80211
+ifneq ($(wildcard external/libnl),)
+LOCAL_SHARED_LIBRARIES += libnl
+else
 LOCAL_STATIC_LIBRARIES += libnl_2
+endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(OBJS)

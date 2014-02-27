@@ -47,6 +47,32 @@ static void p2p_scan_timeout(void *eloop_ctx, void *timeout_ctx);
 
 #define P2P_PEER_EXPIRATION_INTERVAL (P2P_PEER_EXPIRATION_AGE / 2)
 
+#ifdef ANDROID_P2P
+int p2p_connection_in_progress(struct p2p_data *p2p)
+{
+	int ret = 0;
+
+	switch (p2p->state) {
+		case P2P_CONNECT:
+		case P2P_CONNECT_LISTEN:
+		case P2P_GO_NEG:
+		case P2P_WAIT_PEER_CONNECT:
+		case P2P_WAIT_PEER_IDLE:
+		case P2P_PROVISIONING:
+		case P2P_INVITE:
+		case P2P_INVITE_LISTEN:
+			ret = 1;
+			break;
+
+		default:
+			wpa_printf(MSG_DEBUG, "p2p_connection_in_progress state %d", p2p->state);
+			ret = 0;
+	}
+
+	return ret;
+}
+#endif
+
 static void p2p_expire_peers(struct p2p_data *p2p)
 {
 	struct p2p_device *dev, *n;
@@ -91,6 +117,13 @@ static void p2p_expire_peers(struct p2p_data *p2p)
 			os_get_reltime(&dev->last_seen);
 			continue;
 		}
+
+#ifdef ANDROID_P2P
+		/* If Connection is in progress, don't expire the peer
+		*/
+		if (p2p_connection_in_progress(p2p))
+			continue;
+#endif
 
 		p2p_dbg(p2p, "Expiring old peer entry " MACSTR,
 			MAC2STR(dev->info.p2p_device_addr));
@@ -752,9 +785,6 @@ int p2p_add_device(struct p2p_data *p2p, const u8 *addr, int freq,
 
 	p2p_parse_free(&msg);
 
-	if (p2p_pending_sd_req(p2p, dev))
-		dev->flags |= P2P_DEV_SD_SCHEDULE;
-
 	if (dev->flags & P2P_DEV_REPORTED)
 		return 0;
 
@@ -1076,6 +1106,7 @@ int p2p_find(struct p2p_data *p2p, unsigned int timeout,
 	} else if (p2p->p2p_scan_running) {
 		p2p_dbg(p2p, "Failed to start p2p_scan - another p2p_scan was already running");
 		/* wait for the previous p2p_scan to complete */
+		res = 0; /* do not report failure */
 	} else {
 		p2p_dbg(p2p, "Failed to start p2p_scan");
 		p2p_set_state(p2p, P2P_IDLE);
@@ -2054,17 +2085,21 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 
 	if (!p2p->in_listen || !p2p->drv_in_listen) {
 		/* not in Listen state - ignore Probe Request */
+		p2p_dbg(p2p, "Not in Listen state (in_listen=%d drv_in_listen=%d) - ignore Probe Request",
+			p2p->in_listen, p2p->drv_in_listen);
 		return P2P_PREQ_NOT_LISTEN;
 	}
 
 	if (ieee802_11_parse_elems((u8 *) ie, ie_len, &elems, 0) ==
 	    ParseFailed) {
 		/* Ignore invalid Probe Request frames */
+		p2p_dbg(p2p, "Could not parse Probe Request frame - ignore it");
 		return P2P_PREQ_MALFORMED;
 	}
 
 	if (elems.p2p == NULL) {
 		/* not a P2P probe - ignore it */
+		p2p_dbg(p2p, "Not a P2P probe - ignore it");
 		return P2P_PREQ_NOT_P2P;
 	}
 
@@ -2072,11 +2107,15 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 	    os_memcmp(dst, p2p->cfg->dev_addr, ETH_ALEN) != 0) {
 		/* Not sent to the broadcast address or our P2P Device Address
 		 */
+		p2p_dbg(p2p, "Probe Req DA " MACSTR " not ours - ignore it",
+			MAC2STR(dst));
 		return P2P_PREQ_NOT_PROCESSED;
 	}
 
 	if (bssid && !is_broadcast_ether_addr(bssid)) {
 		/* Not sent to the Wildcard BSSID */
+		p2p_dbg(p2p, "Probe Req BSSID " MACSTR " not wildcard - ignore it",
+			MAC2STR(bssid));
 		return P2P_PREQ_NOT_PROCESSED;
 	}
 
@@ -2084,23 +2123,28 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 	    os_memcmp(elems.ssid, P2P_WILDCARD_SSID, P2P_WILDCARD_SSID_LEN) !=
 	    0) {
 		/* not using P2P Wildcard SSID - ignore */
+		p2p_dbg(p2p, "Probe Req not using P2P Wildcard SSID - ignore it");
 		return P2P_PREQ_NOT_PROCESSED;
 	}
 
 	if (supp_rates_11b_only(&elems)) {
 		/* Indicates support for 11b rates only */
+		p2p_dbg(p2p, "Probe Req with 11b rates only supported - ignore it");
 		return P2P_PREQ_NOT_P2P;
 	}
 
 	os_memset(&msg, 0, sizeof(msg));
 	if (p2p_parse_ies(ie, ie_len, &msg) < 0) {
 		/* Could not parse P2P attributes */
+		p2p_dbg(p2p, "Could not parse P2P attributes in Probe Req - ignore it");
 		return P2P_PREQ_NOT_P2P;
 	}
 
 	if (msg.device_id &&
 	    os_memcmp(msg.device_id, p2p->cfg->dev_addr, ETH_ALEN) != 0) {
 		/* Device ID did not match */
+		p2p_dbg(p2p, "Probe Req requested Device ID " MACSTR " did not match - ignore it",
+			MAC2STR(msg.device_id));
 		p2p_parse_free(&msg);
 		return P2P_PREQ_NOT_PROCESSED;
 	}
@@ -2109,6 +2153,7 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 	if (msg.wps_attributes &&
 	    !p2p_match_dev_type(p2p, msg.wps_attributes)) {
 		/* No match with Requested Device Type */
+		p2p_dbg(p2p, "Probe Req requestred Device Type did not match - ignore it");
 		p2p_parse_free(&msg);
 		return P2P_PREQ_NOT_PROCESSED;
 	}
@@ -2116,6 +2161,7 @@ p2p_reply_probe(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 
 	if (!p2p->cfg->send_probe_resp) {
 		/* Response generated elsewhere */
+		p2p_dbg(p2p, "Probe Resp generated elsewhere - do not generate additional response");
 		return P2P_PREQ_NOT_PROCESSED;
 	}
 
@@ -2211,6 +2257,7 @@ p2p_probe_req_rx(struct p2p_data *p2p, const u8 *addr, const u8 *dst,
 	    == 0) {
 		/* Received a Probe Request from Invite peer */
 		p2p_dbg(p2p, "Found Invite peer - try to start Invite from timeout");
+		eloop_cancel_timeout(p2p_invite_start, p2p, NULL);
 		eloop_register_timeout(0, 0, p2p_invite_start, p2p, NULL);
 		return P2P_PREQ_PROCESSED;
 	}
@@ -2482,6 +2529,7 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
 
 	p2p->go_timeout = 100;
 	p2p->client_timeout = 20;
+	p2p->num_p2p_sd_queries = 0;
 
 	p2p_dbg(p2p, "initialized");
 	p2p_channels_dump(p2p, "channels", &p2p->cfg->channels);
@@ -2740,39 +2788,16 @@ void p2p_continue_find(struct p2p_data *p2p)
 #endif
 	p2p_set_state(p2p, P2P_SEARCH);
 	dl_list_for_each(dev, &p2p->devices, struct p2p_device, list) {
-#ifdef ANDROID_P2P
-		/* SD_FAIR_POLICY: We need to give chance to all devices in the device list
-		 * There may be a scenario, where a particular peer device have
-		 * not registered any query response. When we send a SD request to such device,
-		 * no response will be received. And if we continue to get probe responses from that device, 
-		 * and if that device happens to be on top in our device list, 
-		 * we will always continue to send SD requests always to that peer only. 
-		 * We will not be able to send SD requests to other devices in that case. 
-		 * This implementation keeps track of last serviced peer device. 
-		 * And then takes the next one from the device list, in the next iteration.
-		 */
-		if (p2p->sd_dev_list && p2p->sd_dev_list != &p2p->devices) {
-			if(skip) {
-				if ((&dev->list == p2p->sd_dev_list) ) {
-					skip = 0;
-					if (dev->list.next == &p2p->devices)
-						p2p->sd_dev_list = NULL;
-				}
-				continue;
-			}
+		if (dev->sd_pending_bcast_queries == 0) {
+			/* Initialize with total number of registered broadcast
+			 * SD queries. */
+			dev->sd_pending_bcast_queries = p2p->num_p2p_sd_queries;
 		}
-		p2p->sd_dev_list = &dev->list;
-		wpa_printf(MSG_DEBUG, "P2P: ### Servicing %p dev->flags 0x%x SD schedule %s devaddr " MACSTR,
-			p2p->sd_dev_list, dev->flags, dev->flags & P2P_DEV_SD_SCHEDULE ? "TRUE": "FALSE",
-			MAC2STR(dev->info.p2p_device_addr));
-#endif
-		if (dev->flags & P2P_DEV_SD_SCHEDULE) {
-			if (p2p_start_sd(p2p, dev) == 0)
-				return;
-			else
-				break;
-		} else if (dev->req_config_methods &&
-			   !(dev->flags & P2P_DEV_PD_FOR_JOIN)) {
+
+		if (p2p_start_sd(p2p, dev) == 0)
+			return;
+		if (dev->req_config_methods &&
+		    !(dev->flags & P2P_DEV_PD_FOR_JOIN)) {
 			p2p_dbg(p2p, "Send pending Provision Discovery Request to "
 				MACSTR " (config methods 0x%x)",
 				MAC2STR(dev->info.p2p_device_addr),
@@ -2793,10 +2818,7 @@ static void p2p_sd_cb(struct p2p_data *p2p, int success)
 	p2p->pending_action_state = P2P_NO_PENDING_ACTION;
 
 	if (!success) {
-		if (p2p->sd_peer) {
-			p2p->sd_peer->flags &= ~P2P_DEV_SD_SCHEDULE;
-			p2p->sd_peer = NULL;
-		}
+		p2p->sd_peer = NULL;
 		p2p_continue_find(p2p);
 		return;
 	}
@@ -2876,11 +2898,7 @@ static void p2p_prov_disc_cb(struct p2p_data *p2p, int success)
 			p2p_continue_find(p2p);
 		else if (p2p->user_initiated_pd) {
 			p2p->pending_action_state = P2P_PENDING_PD;
-#ifdef ANDROID_P2P
-			p2p_set_timeout(p2p, 0, 350000);
-#else
 			p2p_set_timeout(p2p, 0, 300000);
-#endif
 		}
 		return;
 	}
@@ -2897,11 +2915,7 @@ static void p2p_prov_disc_cb(struct p2p_data *p2p, int success)
 	/* Wait for response from the peer */
 	if (p2p->state == P2P_SEARCH)
 		p2p_set_state(p2p, P2P_PD_DURING_FIND);
-#ifdef ANDROID_P2P
-	p2p_set_timeout(p2p, 0, 350000);
-#else
 	p2p_set_timeout(p2p, 0, 200000);
-#endif
 }
 
 
@@ -3349,7 +3363,6 @@ static void p2p_timeout_sd_during_find(struct p2p_data *p2p)
 	p2p_dbg(p2p, "Service Discovery Query timeout");
 	if (p2p->sd_peer) {
 		p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
-		p2p->sd_peer->flags &= ~P2P_DEV_SD_SCHEDULE;
 		p2p->sd_peer = NULL;
 	}
 	p2p_continue_find(p2p);
@@ -3620,7 +3633,7 @@ int p2p_get_peer_info_txt(const struct p2p_peer_info *info,
 			  "country=%c%c\n"
 			  "oper_freq=%d\n"
 			  "req_config_methods=0x%x\n"
-			  "flags=%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n"
+			  "flags=%s%s%s%s%s%s%s%s%s%s%s%s%s\n"
 			  "status=%d\n"
 			  "wait_count=%u\n"
 			  "invitation_reqs=%u\n",
@@ -3643,9 +3656,6 @@ int p2p_get_peer_info_txt(const struct p2p_peer_info *info,
 			  dev->flags & P2P_DEV_REPORTED ? "[REPORTED]" : "",
 			  dev->flags & P2P_DEV_NOT_YET_READY ?
 			  "[NOT_YET_READY]" : "",
-			  dev->flags & P2P_DEV_SD_INFO ? "[SD_INFO]" : "",
-			  dev->flags & P2P_DEV_SD_SCHEDULE ? "[SD_SCHEDULE]" :
-			  "",
 			  dev->flags & P2P_DEV_PD_PEER_DISPLAY ?
 			  "[PD_PEER_DISPLAY]" : "",
 			  dev->flags & P2P_DEV_PD_PEER_KEYPAD ?

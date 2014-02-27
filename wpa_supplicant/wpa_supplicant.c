@@ -488,6 +488,10 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 
 	os_free(wpa_s->last_scan_res);
 	wpa_s->last_scan_res = NULL;
+
+#ifdef CONFIG_HS20
+	hs20_free_osu_prov(wpa_s);
+#endif /* CONFIG_HS20 */
 }
 
 
@@ -682,12 +686,6 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 
 	if (state == WPA_COMPLETED)
 		wpas_connect_work_done(wpa_s);
-
-#ifdef ANDROID_P2P
-	if(state == WPA_ASSOCIATED && wpa_s->current_ssid) {
-		wpa_s->current_ssid->assoc_retry = 0;
-	}
-#endif /* ANDROID_P2P */
 
 	if (state != WPA_SCANNING)
 		wpa_supplicant_notify_scanning(wpa_s, 0);
@@ -970,13 +968,14 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 {
 	struct wpa_ie_data ie;
 	int sel, proto;
-	const u8 *bss_wpa, *bss_rsn;
+	const u8 *bss_wpa, *bss_rsn, *bss_osen;
 
 	if (bss) {
 		bss_wpa = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 		bss_rsn = wpa_bss_get_ie(bss, WLAN_EID_RSN);
+		bss_osen = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
 	} else
-		bss_wpa = bss_rsn = NULL;
+		bss_wpa = bss_rsn = bss_osen = NULL;
 
 	if (bss_rsn && (ssid->proto & WPA_PROTO_RSN) &&
 	    wpa_parse_wpa_ie(bss_rsn, 2 + bss_rsn[1], &ie) == 0 &&
@@ -992,11 +991,22 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		   (ie.key_mgmt & ssid->key_mgmt)) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using IEEE 802.11i/D3.0");
 		proto = WPA_PROTO_WPA;
+#ifdef CONFIG_HS20
+	} else if (bss_osen && (ssid->proto & WPA_PROTO_OSEN)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "HS 2.0: using OSEN");
+		/* TODO: parse OSEN element */
+		ie.group_cipher = WPA_CIPHER_CCMP;
+		ie.pairwise_cipher = WPA_CIPHER_CCMP;
+		ie.key_mgmt = WPA_KEY_MGMT_OSEN;
+		proto = WPA_PROTO_OSEN;
+#endif /* CONFIG_HS20 */
 	} else if (bss) {
 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to select WPA/RSN");
 		return -1;
 	} else {
-		if (ssid->proto & WPA_PROTO_RSN)
+		if (ssid->proto & WPA_PROTO_OSEN)
+			proto = WPA_PROTO_OSEN;
+		else if (ssid->proto & WPA_PROTO_RSN)
 			proto = WPA_PROTO_RSN;
 		else
 			proto = WPA_PROTO_WPA;
@@ -1029,7 +1039,7 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	wpa_s->wpa_proto = proto;
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_PROTO, proto);
 	wpa_sm_set_param(wpa_s->wpa, WPA_PARAM_RSN_ENABLED,
-			 !!(ssid->proto & WPA_PROTO_RSN));
+			 !!(ssid->proto & (WPA_PROTO_RSN | WPA_PROTO_OSEN)));
 
 	if (bss || !wpa_s->ap_ies_from_associnfo) {
 		if (wpa_sm_set_ap_wpa_ie(wpa_s->wpa, bss_wpa,
@@ -1100,6 +1110,11 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 	} else if (sel & WPA_KEY_MGMT_WPA_NONE) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_WPA_NONE;
 		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT WPA-NONE");
+#ifdef CONFIG_HS20
+	} else if (sel & WPA_KEY_MGMT_OSEN) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_OSEN;
+		wpa_dbg(wpa_s, MSG_DEBUG, "HS 2.0: using KEY_MGMT OSEN");
+#endif /* CONFIG_HS20 */
 	} else {
 		wpa_msg(wpa_s, MSG_WARNING, "WPA: Failed to select "
 			"authenticated key management type");
@@ -1245,6 +1260,10 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx)
 #endif /* CONFIG_INTERWORKING */
 		break;
 	case 5: /* Bits 40-47 */
+#ifdef CONFIG_HS20
+		if (wpa_s->conf->hs20)
+			*pos |= 0x40; /* Bit 46 - WNM-Notification */
+#endif /* CONFIG_HS20 */
 		break;
 	case 6: /* Bits 48-55 */
 		break;
@@ -1255,7 +1274,7 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx)
 int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf)
 {
 	u8 *pos = buf;
-	u8 len = 4, i;
+	u8 len = 6, i;
 
 	if (len < wpa_s->extended_capa_len)
 		len = wpa_s->extended_capa_len;
@@ -1400,6 +1419,11 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->connect_work) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Reject wpa_supplicant_associate() call since connect_work exist");
+		return;
+	}
+
+	if (radio_work_pending(wpa_s, "connect")) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Reject wpa_supplicant_associate() call since pending work exist");
 		return;
 	}
 
@@ -1618,7 +1642,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 		struct wpabuf *hs20;
 		hs20 = wpabuf_alloc(20);
 		if (hs20) {
-			wpas_hs20_add_indication(hs20);
+			int pps_mo_id = hs20_get_pps_mo_id(wpa_s, ssid);
+			wpas_hs20_add_indication(hs20, pps_mo_id);
 			os_memcpy(wpa_ie + wpa_ie_len, wpabuf_head(hs20),
 				  wpabuf_len(hs20));
 			wpa_ie_len += wpabuf_len(hs20);
@@ -1700,6 +1725,8 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 			params.bssid = bss->bssid;
 			params.freq = bss->freq;
 		}
+		params.bssid_hint = bss->bssid;
+		params.freq_hint = bss->freq;
 	} else {
 		params.ssid = ssid->ssid;
 		params.ssid_len = ssid->ssid_len;
@@ -3123,8 +3150,8 @@ static void radio_start_next_work(void *eloop_ctx, void *timeout_ctx)
 /*
  * This function removes both started and pending radio works running on
  * the provided interface's radio.
- * Prior to the removal of the radio work, it's callback (cb) is called with
- * deinit set to be 1. Each work's callback is responsible for clearing it's
+ * Prior to the removal of the radio work, its callback (cb) is called with
+ * deinit set to be 1. Each work's callback is responsible for clearing its
  * internal data and restoring to a correct state.
  * @wpa_s: wpa_supplicant data
  * @type: type of works to be removed
@@ -3139,15 +3166,15 @@ void radio_remove_works(struct wpa_supplicant *wpa_s,
 
 	dl_list_for_each_safe(work, tmp, &radio->work, struct wpa_radio_work,
 			      list) {
-		if (type && (os_strcmp(type, work->type) != 0))
+		if (type && os_strcmp(type, work->type) != 0)
 			continue;
 
 		/* skip other ifaces' works */
-		if (!remove_all && (work->wpa_s != wpa_s))
+		if (!remove_all && work->wpa_s != wpa_s)
 			continue;
 
-		wpa_dbg(wpa_s, MSG_DEBUG, "Remove radio work '%s'@%p",
-			work->type, work);
+		wpa_dbg(wpa_s, MSG_DEBUG, "Remove radio work '%s'@%p%s",
+			work->type, work, work->started ? " (started)" : "");
 		work->cb(work, 1);
 		radio_work_free(work);
 	}
@@ -3270,6 +3297,20 @@ void radio_work_done(struct wpa_radio_work *work)
 	radio_work_free(work);
 	if (started)
 		radio_work_check_next(wpa_s);
+}
+
+
+int radio_work_pending(struct wpa_supplicant *wpa_s, const char *type)
+{
+	struct wpa_radio_work *work;
+	struct wpa_radio *radio = wpa_s->radio;
+
+	dl_list_for_each(work, &radio->work, struct wpa_radio_work, list) {
+		if (work->wpa_s == wpa_s && os_strcmp(work->type, type) == 0)
+			return 1;
+	}
+
+	return 0;
 }
 
 
@@ -4347,16 +4388,22 @@ void wpas_auth_failed(struct wpa_supplicant *wpa_s)
 
 	if (ssid->auth_failures > 50)
 		dur = 300;
-	else if (ssid->auth_failures > 20)
-		dur = 120;
 	else if (ssid->auth_failures > 10)
-		dur = 60;
+		dur = 120;
 	else if (ssid->auth_failures > 5)
+		dur = 90;
+	else if (ssid->auth_failures > 3)
+		dur = 60;
+	else if (ssid->auth_failures > 2)
 		dur = 30;
 	else if (ssid->auth_failures > 1)
 		dur = 20;
 	else
 		dur = 10;
+
+	if (ssid->auth_failures > 1 &&
+	    wpa_key_mgmt_wpa_ieee8021x(ssid->key_mgmt))
+		dur += os_random() % (ssid->auth_failures * 10);
 
 	os_get_reltime(&now);
 	if (now.sec + dur <= ssid->disabled_until.sec)

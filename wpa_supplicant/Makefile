@@ -98,6 +98,14 @@ OBJS += ../src/utils/os_$(CONFIG_OS).o
 OBJS_p += ../src/utils/os_$(CONFIG_OS).o
 OBJS_c += ../src/utils/os_$(CONFIG_OS).o
 
+ifdef CONFIG_MODULE_TESTS
+CFLAGS += -DCONFIG_MODULE_TESTS
+OBJS += wpas_module_tests.o
+ifdef CONFIG_WPS
+OBJS += ../src/wps/wps_module_tests.o
+endif
+endif
+
 ifdef CONFIG_WPA_TRACE
 CFLAGS += -DWPA_TRACE
 OBJS += ../src/utils/trace.o
@@ -107,10 +115,10 @@ OBJS_priv += ../src/utils/trace.o
 LDFLAGS += -rdynamic
 CFLAGS += -funwind-tables
 ifdef CONFIG_WPA_TRACE_BFD
-CFLAGS += -DWPA_TRACE_BFD
-LIBS += -lbfd
-LIBS_p += -lbfd
-LIBS_c += -lbfd
+CFLAGS += -DPACKAGE="wpa_supplicant" -DWPA_TRACE_BFD
+LIBS += -lbfd -ldl -liberty -lz
+LIBS_p += -lbfd -ldl -liberty -lz
+LIBS_c += -lbfd -ldl -liberty -lz
 endif
 endif
 
@@ -284,6 +292,7 @@ ifdef CONFIG_HS20
 OBJS += hs20_supplicant.o
 CFLAGS += -DCONFIG_HS20
 CONFIG_INTERWORKING=y
+NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_INTERWORKING
@@ -1265,6 +1274,11 @@ endif
 ifeq ($(CONFIG_CTRL_IFACE), udp)
 CFLAGS += -DCONFIG_CTRL_IFACE_UDP
 endif
+ifeq ($(CONFIG_CTRL_IFACE), udp6)
+CONFIG_CTRL_IFACE=udp
+CFLAGS += -DCONFIG_CTRL_IFACE_UDP
+CFLAGS += -DCONFIG_CTRL_IFACE_UDP_IPV6
+endif
 ifeq ($(CONFIG_CTRL_IFACE), named_pipe)
 CFLAGS += -DCONFIG_CTRL_IFACE_NAMED_PIPE
 endif
@@ -1272,6 +1286,12 @@ ifeq ($(CONFIG_CTRL_IFACE), udp-remote)
 CONFIG_CTRL_IFACE=udp
 CFLAGS += -DCONFIG_CTRL_IFACE_UDP
 CFLAGS += -DCONFIG_CTRL_IFACE_UDP_REMOTE
+endif
+ifeq ($(CONFIG_CTRL_IFACE), udp6-remote)
+CONFIG_CTRL_IFACE=udp
+CFLAGS += -DCONFIG_CTRL_IFACE_UDP
+CFLAGS += -DCONFIG_CTRL_IFACE_UDP_REMOTE
+CFLAGS += -DCONFIG_CTRL_IFACE_UDP_IPV6
 endif
 OBJS += ctrl_iface.o ctrl_iface_$(CONFIG_CTRL_IFACE).o
 endif

@@ -170,6 +170,17 @@ int hostapd_build_ap_extra_ies(struct hostapd_data *hapd,
 			goto fail;
 		wpabuf_put_data(proberesp, buf, pos - buf);
 	}
+
+	pos = hostapd_eid_osen(hapd, buf);
+	if (pos != buf) {
+		if (wpabuf_resize(&beacon, pos - buf) != 0)
+			goto fail;
+		wpabuf_put_data(beacon, buf, pos - buf);
+
+		if (wpabuf_resize(&proberesp, pos - buf) != 0)
+			goto fail;
+		wpabuf_put_data(proberesp, buf, pos - buf);
+	}
 #endif /* CONFIG_HS20 */
 
 	if (hapd->conf->vendor_elements) {
@@ -346,7 +357,7 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 		    u16 listen_interval,
 		    const struct ieee80211_ht_capabilities *ht_capab,
 		    const struct ieee80211_vht_capabilities *vht_capab,
-		    u32 flags, u8 qosinfo)
+		    u32 flags, u8 qosinfo, u8 vht_opmode)
 {
 	struct hostapd_sta_add_params params;
 
@@ -364,6 +375,8 @@ int hostapd_sta_add(struct hostapd_data *hapd,
 	params.listen_interval = listen_interval;
 	params.ht_capabilities = ht_capab;
 	params.vht_capabilities = vht_capab;
+	params.vht_opmode_enabled = !!(flags & WLAN_STA_VHT_OPMODE_ENABLED);
+	params.vht_opmode = vht_opmode;
 	params.flags = hostapd_sta_flags_to_drv(flags);
 	params.qosinfo = qosinfo;
 	return hapd->driver->sta_add(hapd->drv_priv, &params);

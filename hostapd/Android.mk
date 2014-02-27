@@ -50,7 +50,11 @@ L_CFLAGS += -DANDROID422
 endif
 
 ifdef CONFIG_DRIVER_NL80211
+ifneq ($(wildcard external/libnl),)
+INCLUDES += external/libnl/include
+else
 INCLUDES += external/libnl-headers
+endif
 endif
 
 
@@ -104,7 +108,6 @@ NEED_RC4=y
 NEED_AES=y
 NEED_MD5=y
 NEED_SHA1=y
-NEED_SHA256=y
 
 OBJS += src/drivers/drivers.c
 L_CFLAGS += -DHOSTAPD
@@ -195,6 +198,10 @@ endif
 ifdef CONFIG_PEERKEY
 L_CFLAGS += -DCONFIG_PEERKEY
 OBJS += src/ap/peerkey_auth.c
+endif
+
+ifdef CONFIG_HS20
+NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_IEEE80211W
@@ -912,7 +919,11 @@ endif
 LOCAL_SHARED_LIBRARIES := libc libcutils liblog libcrypto libssl
 
 ifdef CONFIG_DRIVER_NL80211
+ifneq ($(wildcard external/libnl),)
+LOCAL_SHARED_LIBRARIES += libnl
+else
 LOCAL_STATIC_LIBRARIES += libnl_2
+endif
 endif
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(OBJS)

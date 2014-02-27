@@ -187,9 +187,6 @@ void wpa_supplicant_mark_disassoc(struct wpa_supplicant *wpa_s)
 		return;
 
 	wpa_supplicant_set_state(wpa_s, WPA_DISCONNECTED);
-#ifdef ANDROID
-	wpa_s->conf->ap_scan = DEFAULT_AP_SCAN;
-#endif
 	bssid_changed = !is_zero_ether_addr(wpa_s->bssid);
 	os_memset(wpa_s->bssid, 0, ETH_ALEN);
 	os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
@@ -400,6 +397,9 @@ static int wpa_supplicant_match_privacy(struct wpa_bss *bss,
 	if (wpa_key_mgmt_wpa(ssid->key_mgmt))
 		privacy = 1;
 
+	if (ssid->key_mgmt & WPA_KEY_MGMT_OSEN)
+		privacy = 1;
+
 	if (bss->caps & IEEE80211_CAP_PRIVACY)
 		return privacy;
 	return !privacy;
@@ -540,6 +540,12 @@ static int wpa_supplicant_ssid_bss_match(struct wpa_supplicant *wpa_s,
 	    wpa_key_mgmt_wpa(ssid->key_mgmt) && proto_match == 0) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "   skip - no WPA/RSN proto match");
 		return 0;
+	}
+
+	if ((ssid->key_mgmt & WPA_KEY_MGMT_OSEN) &&
+	    wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE)) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "   allow in OSEN");
+		return 1;
 	}
 
 	if (!wpa_key_mgmt_wpa(ssid->key_mgmt)) {
@@ -731,13 +737,15 @@ static int bss_is_ess(struct wpa_bss *bss)
 
 static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 					    int i, struct wpa_bss *bss,
-					    struct wpa_ssid *group)
+					    struct wpa_ssid *group,
+					    int only_first_ssid)
 {
 	u8 wpa_ie_len, rsn_ie_len;
 	int wpa;
 	struct wpa_blacklist *e;
 	const u8 *ie;
 	struct wpa_ssid *ssid;
+	int osen;
 
 	ie = wpa_bss_get_vendor_ie(bss, WPA_IE_VENDOR_TYPE);
 	wpa_ie_len = ie ? ie[1] : 0;
@@ -745,14 +753,18 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 	ie = wpa_bss_get_ie(bss, WLAN_EID_RSN);
 	rsn_ie_len = ie ? ie[1] : 0;
 
+	ie = wpa_bss_get_vendor_ie(bss, OSEN_IE_VENDOR_TYPE);
+	osen = ie != NULL;
+
 	wpa_dbg(wpa_s, MSG_DEBUG, "%d: " MACSTR " ssid='%s' "
-		"wpa_ie_len=%u rsn_ie_len=%u caps=0x%x level=%d%s%s",
+		"wpa_ie_len=%u rsn_ie_len=%u caps=0x%x level=%d%s%s%s",
 		i, MAC2STR(bss->bssid), wpa_ssid_txt(bss->ssid, bss->ssid_len),
 		wpa_ie_len, rsn_ie_len, bss->caps, bss->level,
 		wpa_bss_get_vendor_ie(bss, WPS_IE_VENDOR_TYPE) ? " wps" : "",
 		(wpa_bss_get_vendor_ie(bss, P2P_IE_VENDOR_TYPE) ||
 		 wpa_bss_get_vendor_ie_beacon(bss, P2P_IE_VENDOR_TYPE)) ?
-		" p2p" : "");
+		" p2p" : "",
+		osen ? " osen=1" : "");
 
 	e = wpa_blacklist_get(wpa_s, bss->bssid);
 	if (e) {
@@ -792,7 +804,7 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 
 	wpa = wpa_ie_len > 0 || rsn_ie_len > 0;
 
-	for (ssid = group; ssid; ssid = ssid->pnext) {
+	for (ssid = group; ssid; ssid = only_first_ssid ? NULL : ssid->pnext) {
 		int check_ssid = wpa ? 1 : (ssid->ssid_len != 0);
 		int res;
 
@@ -850,7 +862,7 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		if (!wpa_supplicant_ssid_bss_match(wpa_s, ssid, bss))
 			continue;
 
-		if (!wpa &&
+		if (!osen && !wpa &&
 		    !(ssid->key_mgmt & WPA_KEY_MGMT_NONE) &&
 		    !(ssid->key_mgmt & WPA_KEY_MGMT_WPS) &&
 		    !(ssid->key_mgmt & WPA_KEY_MGMT_IEEE8021X_NO_WPA)) {
@@ -862,6 +874,12 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 		if (wpa && !wpa_key_mgmt_wpa(ssid->key_mgmt) &&
 		    has_wep_key(ssid)) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - ignore WPA/WPA2 AP for WEP network block");
+			continue;
+		}
+
+		if ((ssid->key_mgmt & WPA_KEY_MGMT_OSEN) && !osen) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "   skip - non-OSEN network "
+				"not allowed");
 			continue;
 		}
 
@@ -941,16 +959,22 @@ static struct wpa_ssid * wpa_scan_res_match(struct wpa_supplicant *wpa_s,
 static struct wpa_bss *
 wpa_supplicant_select_bss(struct wpa_supplicant *wpa_s,
 			  struct wpa_ssid *group,
-			  struct wpa_ssid **selected_ssid)
+			  struct wpa_ssid **selected_ssid,
+			  int only_first_ssid)
 {
 	unsigned int i;
 
-	wpa_dbg(wpa_s, MSG_DEBUG, "Selecting BSS from priority group %d",
-		group->priority);
+	if (only_first_ssid)
+		wpa_dbg(wpa_s, MSG_DEBUG, "Try to find BSS matching pre-selected network id=%d",
+			group->id);
+	else
+		wpa_dbg(wpa_s, MSG_DEBUG, "Selecting BSS from priority group %d",
+			group->priority);
 
 	for (i = 0; i < wpa_s->last_scan_res_used; i++) {
 		struct wpa_bss *bss = wpa_s->last_scan_res[i];
-		*selected_ssid = wpa_scan_res_match(wpa_s, i, bss, group);
+		*selected_ssid = wpa_scan_res_match(wpa_s, i, bss, group,
+						    only_first_ssid);
 		if (!*selected_ssid)
 			continue;
 		wpa_dbg(wpa_s, MSG_DEBUG, "   selected BSS " MACSTR
@@ -975,10 +999,27 @@ struct wpa_bss * wpa_supplicant_pick_network(struct wpa_supplicant *wpa_s,
 		return NULL; /* no scan results from last update */
 
 	while (selected == NULL) {
+		if (wpa_s->next_ssid) {
+			struct wpa_ssid *ssid;
+
+			/* check that next_ssid is still valid */
+			for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next)
+				if (ssid == wpa_s->next_ssid)
+					break;
+			wpa_s->next_ssid = NULL;
+
+			if (ssid) {
+				selected = wpa_supplicant_select_bss(
+					wpa_s, ssid, selected_ssid, 1);
+				if (selected)
+					break;
+			}
+		}
+
 		for (prio = 0; prio < wpa_s->conf->num_prio; prio++) {
 			selected = wpa_supplicant_select_bss(
 				wpa_s, wpa_s->conf->pssid[prio],
-				selected_ssid);
+				selected_ssid, 0);
 			if (selected)
 				break;
 		}
@@ -1868,12 +1909,8 @@ static void wpa_supplicant_event_assoc(struct wpa_supplicant *wpa_s,
 			return;
 		}
 
-#ifdef ANDROID
-		if (wpa_s->conf->ap_scan == 1) {
-#else
 		if (wpa_s->conf->ap_scan == 1 &&
 		    wpa_s->drv_flags & WPA_DRIVER_FLAGS_BSS_SELECTION) {
-#endif
 			if (wpa_supplicant_assoc_update_ie(wpa_s) < 0)
 				wpa_msg(wpa_s, MSG_WARNING,
 					"WPA/RSN IEs not updated");
@@ -2133,11 +2170,7 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 			fast_reconnect_ssid = wpa_s->current_ssid;
 #endif /* CONFIG_NO_SCAN_PROCESSING */
 		} else if (wpa_s->wpa_state >= WPA_ASSOCIATING)
-#ifdef ANDROID
-			wpa_supplicant_req_scan(wpa_s, 0, 500000);
-#else
 			wpa_supplicant_req_scan(wpa_s, 0, 100000);
-#endif
 		else
 			wpa_dbg(wpa_s, MSG_DEBUG, "Do not request new "
 				"immediate scan");
@@ -2174,7 +2207,12 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 		wpa_s->current_ssid = last_ssid;
 	}
 
-	if (fast_reconnect) {
+	if (fast_reconnect &&
+	    !wpas_network_disabled(wpa_s, fast_reconnect_ssid) &&
+	    !disallowed_bssid(wpa_s, fast_reconnect->bssid) &&
+	    !disallowed_ssid(wpa_s, fast_reconnect->ssid,
+			     fast_reconnect->ssid_len) &&
+	    !wpas_temp_disabled(wpa_s, fast_reconnect_ssid)) {
 #ifndef CONFIG_NO_SCAN_PROCESSING
 		wpa_dbg(wpa_s, MSG_DEBUG, "Try to reconnect to the same BSS");
 		if (wpa_supplicant_connect(wpa_s, fast_reconnect,
@@ -2183,6 +2221,14 @@ static void wpa_supplicant_event_disassoc_finish(struct wpa_supplicant *wpa_s,
 			wpa_supplicant_req_scan(wpa_s, 0, 100000);
 		}
 #endif /* CONFIG_NO_SCAN_PROCESSING */
+	} else if (fast_reconnect) {
+		/*
+		 * Could not reconnect to the same BSS due to network being
+		 * disabled. Use a new scan to match the alternative behavior
+		 * above, i.e., to continue automatic reconnection attempt in a
+		 * way that enforces disabled network rules.
+		 */
+		wpa_supplicant_req_scan(wpa_s, 0, 100000);
 	}
 }
 
@@ -2982,52 +3028,11 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 		if (wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME)
 			sme_event_assoc_reject(wpa_s, data);
 		else {
-#ifdef ANDROID_P2P
-			if(!wpa_s->current_ssid) {
-				wpa_printf(MSG_ERROR, "current_ssid == NULL");
-				break;
-			}
-			/* If assoc reject is reported by the driver, then avoid
-			 * waiting for  the authentication timeout. Cancel the
-			 * authentication timeout and retry the assoc.
-			 */
-			if(wpa_s->current_ssid->assoc_retry++ < 10) {
-				wpa_printf(MSG_ERROR, "Retrying assoc: %d ",
-								wpa_s->current_ssid->assoc_retry);
-
-				wpa_supplicant_cancel_auth_timeout(wpa_s);
-
-				/* Clear the states */
-				wpa_sm_notify_disassoc(wpa_s->wpa);
-				wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
-
-				wpa_s->reassociate = 1;
-				if (wpa_s->p2p_group_interface == NOT_P2P_GROUP_INTERFACE) {
-					const u8 *bl_bssid = data->assoc_reject.bssid;
-					if (!bl_bssid || is_zero_ether_addr(bl_bssid))
-						bl_bssid = wpa_s->pending_bssid;
-					wpa_blacklist_add(wpa_s, bl_bssid);
-					wpa_supplicant_req_scan(wpa_s, 0, 0);
-				} else {
-					wpa_supplicant_req_scan(wpa_s, 1, 0);
-				}
-			} else if (wpa_s->p2p_group_interface != NOT_P2P_GROUP_INTERFACE) {
-				/* If we ASSOC_REJECT's hits threshold, disable the 
-			 	 * network
-			 	 */
-				wpa_printf(MSG_ERROR, "Assoc retry threshold reached. "
-				"Disabling the network");
-				wpa_s->current_ssid->assoc_retry = 0;
-				wpa_supplicant_disable_network(wpa_s, wpa_s->current_ssid);
-				wpas_p2p_group_remove(wpa_s, wpa_s->ifname);
-			}
-#else
 			const u8 *bssid = data->assoc_reject.bssid;
 			if (bssid == NULL || is_zero_ether_addr(bssid))
 				bssid = wpa_s->pending_bssid;
 			wpas_connection_failed(wpa_s, bssid, 1);
 			wpa_supplicant_mark_disassoc(wpa_s);
-#endif /* ANDROID_P2P */
 		}
 		break;
 	case EVENT_AUTH_TIMED_OUT:

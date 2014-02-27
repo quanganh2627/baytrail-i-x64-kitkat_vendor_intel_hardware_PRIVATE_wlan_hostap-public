@@ -3533,6 +3533,9 @@ static void wiphy_info_cipher_suites(struct wiphy_info_data *info,
 		case WLAN_CIPHER_SUITE_BIP_CMAC_256:
 			info->capa->enc |= WPA_DRIVER_CAPA_ENC_BIP_CMAC_256;
 			break;
+		case WLAN_CIPHER_SUITE_NO_GROUP_ADDR:
+			info->capa->enc |= WPA_DRIVER_CAPA_ENC_GTK_NOT_USED;
+			break;
 		}
 	}
 }
@@ -4403,6 +4406,12 @@ static int nl80211_mgmt_subscribe_non_ap(struct i802_bss *bss)
 	/* WNM-Sleep Mode Response */
 	if (nl80211_register_action_frame(bss, (u8 *) "\x0a\x11", 2) < 0)
 		ret = -1;
+
+#ifdef CONFIG_HS20
+	/* WNM-Notification */
+	if (nl80211_register_action_frame(bss, (u8 *) "\x0a\x1a", 2) < 0)
+		return -1;
+#endif /* CONFIG_HS20 */
 
 	nl80211_mgmt_handle_register_eloop(bss);
 
@@ -5548,6 +5557,8 @@ static u32 wpa_cipher_to_cipher_suite(unsigned int cipher)
 		return WLAN_CIPHER_SUITE_WEP104;
 	case WPA_CIPHER_WEP40:
 		return WLAN_CIPHER_SUITE_WEP40;
+	case WPA_CIPHER_GTK_NOT_USED:
+		return WLAN_CIPHER_SUITE_NO_GROUP_ADDR;
 	}
 
 	return 0;
@@ -6684,7 +6695,7 @@ static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 
 	nla_for_each_nested(nl_rule, tb_msg[NL80211_ATTR_REG_RULES], rem_rule)
 	{
-		u32 start, end, max_eirp = 0, max_bw = 0;
+		u32 start, end, max_eirp = 0, max_bw = 0, flags = 0;
 		nla_parse(tb_rule, NL80211_FREQUENCY_ATTR_MAX,
 			  nla_data(nl_rule), nla_len(nl_rule), reg_policy);
 		if (tb_rule[NL80211_ATTR_FREQ_RANGE_START] == NULL ||
@@ -6696,9 +6707,20 @@ static int nl80211_get_reg(struct nl_msg *msg, void *arg)
 			max_eirp = nla_get_u32(tb_rule[NL80211_ATTR_POWER_RULE_MAX_EIRP]) / 100;
 		if (tb_rule[NL80211_ATTR_FREQ_RANGE_MAX_BW])
 			max_bw = nla_get_u32(tb_rule[NL80211_ATTR_FREQ_RANGE_MAX_BW]) / 1000;
+		if (tb_rule[NL80211_ATTR_REG_RULE_FLAGS])
+			flags = nla_get_u32(tb_rule[NL80211_ATTR_REG_RULE_FLAGS]);
 
-		wpa_printf(MSG_DEBUG, "nl80211: %u-%u @ %u MHz %u mBm",
-			   start, end, max_bw, max_eirp);
+		wpa_printf(MSG_DEBUG, "nl80211: %u-%u @ %u MHz %u mBm%s%s%s%s%s%s%s%s",
+			   start, end, max_bw, max_eirp,
+			   flags & NL80211_RRF_NO_OFDM ? " (no OFDM)" : "",
+			   flags & NL80211_RRF_NO_CCK ? " (no CCK)" : "",
+			   flags & NL80211_RRF_NO_INDOOR ? " (no indoor)" : "",
+			   flags & NL80211_RRF_NO_OUTDOOR ? " (no outdoor)" :
+			   "",
+			   flags & NL80211_RRF_DFS ? " (DFS)" : "",
+			   flags & NL80211_RRF_PTP_ONLY ? " (PTP only)" : "",
+			   flags & NL80211_RRF_PTMP_ONLY ? " (PTMP only)" : "",
+			   flags & NL80211_RRF_NO_IR ? " (no IR)" : "");
 		if (max_bw >= 40)
 			nl80211_reg_rule_ht40(start, end, results);
 		if (tb_rule[NL80211_ATTR_POWER_RULE_MAX_EIRP])
@@ -7392,6 +7414,12 @@ static int wpa_driver_nl80211_sta_add(void *priv,
 		NLA_PUT(msg, NL80211_ATTR_VHT_CAPABILITY,
 			sizeof(*params->vht_capabilities),
 			params->vht_capabilities);
+	}
+
+	if (params->vht_opmode_enabled) {
+		wpa_printf(MSG_DEBUG, "  * opmode=%u", params->vht_opmode);
+		NLA_PUT_U8(msg, NL80211_ATTR_OPMODE_NOTIF,
+			   params->vht_opmode);
 	}
 
 	wpa_printf(MSG_DEBUG, "  * capability=0x%x", params->capability);
@@ -8434,12 +8462,25 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		NLA_PUT(msg, NL80211_ATTR_MAC, ETH_ALEN, params->bssid);
 	}
 
+	if (params->bssid_hint) {
+		wpa_printf(MSG_DEBUG, "  * bssid_hint=" MACSTR,
+			   MAC2STR(params->bssid_hint));
+		NLA_PUT(msg, NL80211_ATTR_MAC_HINT, ETH_ALEN,
+			params->bssid_hint);
+	}
+
 	if (params->freq) {
 		wpa_printf(MSG_DEBUG, "  * freq=%d", params->freq);
 		NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, params->freq);
 		drv->assoc_freq = params->freq;
 	} else
 		drv->assoc_freq = 0;
+
+	if (params->freq_hint) {
+		wpa_printf(MSG_DEBUG, "  * freq_hint=%d", params->freq_hint);
+		NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ_HINT,
+			    params->freq_hint);
+	}
 
 	if (params->bg_scan_period >= 0) {
 		wpa_printf(MSG_DEBUG, "  * bg scan period=%d",
@@ -8482,7 +8523,14 @@ static int nl80211_connect_common(struct wpa_driver_nl80211_data *drv,
 		NLA_PUT_U32(msg, NL80211_ATTR_CIPHER_SUITES_PAIRWISE, cipher);
 	}
 
-	if (params->group_suite != WPA_CIPHER_NONE) {
+	if (params->group_suite == WPA_CIPHER_GTK_NOT_USED &&
+	    !(drv->capa.enc & WPA_DRIVER_CAPA_ENC_GTK_NOT_USED)) {
+		/*
+		 * This is likely to work even though many drivers do not
+		 * advertise support for operations without GTK.
+		 */
+		wpa_printf(MSG_DEBUG, "  * skip group cipher configuration for GTK_NOT_USED due to missing driver support advertisement");
+	} else if (params->group_suite != WPA_CIPHER_NONE) {
 		u32 cipher = wpa_cipher_to_cipher_suite(params->group_suite);
 		wpa_printf(MSG_DEBUG, "  * group=0x%x", cipher);
 		NLA_PUT_U32(msg, NL80211_ATTR_CIPHER_SUITE_GROUP, cipher);

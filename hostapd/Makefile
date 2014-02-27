@@ -70,6 +70,11 @@ NEED_SHA1=y
 OBJS += ../src/drivers/drivers.o
 CFLAGS += -DHOSTAPD
 
+ifdef CONFIG_MODULE_TESTS
+CFLAGS += -DCONFIG_MODULE_TESTS
+OBJS += hapd_module_tests.o
+endif
+
 ifdef CONFIG_WPA_TRACE
 CFLAGS += -DWPA_TRACE
 OBJS += ../src/utils/trace.o
@@ -77,10 +82,10 @@ HOBJS += ../src/utils/trace.o
 LDFLAGS += -rdynamic
 CFLAGS += -funwind-tables
 ifdef CONFIG_WPA_TRACE_BFD
-CFLAGS += -DWPA_TRACE_BFD
-LIBS += -lbfd
-LIBS_c += -lbfd
-LIBS_h += -lbfd
+CFLAGS += -DPACKAGE="hostapd" -DWPA_TRACE_BFD
+LIBS += -lbfd -ldl -liberty -lz
+LIBS_c += -lbfd -ldl -liberty -lz
+LIBS_h += -lbfd -ldl -liberty -lz
 endif
 endif
 
@@ -95,6 +100,7 @@ ifeq ($(CONFIG_ELOOP), eloop)
 LIBS += -lrt
 LIBS_c += -lrt
 LIBS_h += -lrt
+LIBS_n += -lrt
 endif
 
 OBJS += ../src/utils/common.o
@@ -177,6 +183,10 @@ endif
 ifdef CONFIG_PEERKEY
 CFLAGS += -DCONFIG_PEERKEY
 OBJS += ../src/ap/peerkey_auth.o
+endif
+
+ifdef CONFIG_HS20
+NEED_AES_OMAC1=y
 endif
 
 ifdef CONFIG_IEEE80211W

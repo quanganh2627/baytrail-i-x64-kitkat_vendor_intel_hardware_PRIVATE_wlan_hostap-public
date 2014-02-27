@@ -1,6 +1,6 @@
 /*
  * RADIUS message processing
- * Copyright (c) 2002-2009, 2012, Jouni Malinen <j@w1.fi>
+ * Copyright (c) 2002-2009, 2012, 2014, Jouni Malinen <j@w1.fi>
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
@@ -163,6 +163,18 @@ enum { RADIUS_VENDOR_ATTR_MS_MPPE_SEND_KEY = 16,
        RADIUS_VENDOR_ATTR_MS_MPPE_RECV_KEY = 17
 };
 
+
+/* Hotspot 2.0 - WFA Vendor-specific RADIUS Attributes */
+#define RADIUS_VENDOR_ID_WFA 40808
+
+enum {
+	RADIUS_VENDOR_ATTR_WFA_HS20_SUBSCR_REMEDIATION = 1,
+	RADIUS_VENDOR_ATTR_WFA_HS20_AP_VERSION = 2,
+	RADIUS_VENDOR_ATTR_WFA_HS20_STA_VERSION = 3,
+	RADIUS_VENDOR_ATTR_WFA_HS20_DEAUTH_REQ = 4,
+	RADIUS_VENDOR_ATTR_WFA_HS20_SESSION_INFO_URL = 5,
+};
+
 #ifdef _MSC_VER
 #pragma pack(pop)
 #endif /* _MSC_VER */
@@ -204,6 +216,9 @@ int radius_msg_finish_das_resp(struct radius_msg *msg, const u8 *secret,
 			       const struct radius_hdr *req_hdr);
 void radius_msg_finish_acct(struct radius_msg *msg, const u8 *secret,
 			    size_t secret_len);
+void radius_msg_finish_acct_resp(struct radius_msg *msg, const u8 *secret,
+				 size_t secret_len,
+				 const u8 *req_authenticator);
 int radius_msg_verify_acct_req(struct radius_msg *msg, const u8 *secret,
 			       size_t secret_len);
 int radius_msg_verify_das_req(struct radius_msg *msg, const u8 *secret,
@@ -234,6 +249,8 @@ int radius_msg_add_mppe_keys(struct radius_msg *msg,
 			     const u8 *secret, size_t secret_len,
 			     const u8 *send_key, size_t send_key_len,
 			     const u8 *recv_key, size_t recv_key_len);
+int radius_msg_add_wfa(struct radius_msg *msg, u8 subtype, const u8 *data,
+		       size_t len);
 struct radius_attr_hdr *
 radius_msg_add_attr_user_password(struct radius_msg *msg,
 				  const u8 *data, size_t data_len,
