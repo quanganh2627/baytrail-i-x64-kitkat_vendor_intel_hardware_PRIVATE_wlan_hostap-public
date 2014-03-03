@@ -8169,3 +8169,82 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 
 	wpas_p2p_update_channel_list(wpa_s);
 }
+
+void wpas_p2p_freq_priority_changed(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_global *global = wpa_s->global;
+	const struct wpa_freq_range_value_list *p;
+	struct wpa_freq_range_list avoid, disallow;
+
+	os_memset(&avoid, 0, sizeof(avoid));
+	os_memset(&disallow, 0, sizeof(disallow));
+
+	/* Combine all the frequencies that we need to disallow/avoid */
+	dl_list_for_each(p, &global->freq_priority,
+			 const struct wpa_freq_range_value_list, list) {
+		struct wpa_freq_range *tmp;
+		unsigned int i;
+
+		if (p->ranges.num <= 0)
+			continue;
+
+		if (p->value > WPA_FREQ_PRIORITY_P2P_GO_AVOID)
+			continue;
+
+		if (p->value <= WPA_FREQ_PRIORITY_P2P_DISALLOW) {
+			tmp = os_realloc_array(disallow.range,
+					       disallow.num + p->ranges.num,
+					       sizeof(struct wpa_freq_range));
+			if (tmp == NULL) {
+				os_free(disallow.range);
+				os_free(avoid.range);
+				return;
+			}
+
+			disallow.range = tmp;
+			for (i = 0; i < p->ranges.num; i++)
+				disallow.range[disallow.num++] =
+					p->ranges.range[i];
+		} else {
+			tmp = os_realloc_array(avoid.range,
+					       avoid.num + p->ranges.num,
+					       sizeof(struct wpa_freq_range));
+			if (tmp == NULL) {
+				os_free(disallow.range);
+				os_free(avoid.range);
+				return;
+			}
+
+			avoid.range = tmp;
+			for (i = 0; i < p->ranges.num; i++)
+				avoid.range[avoid.num++] = p->ranges.range[i];
+		}
+	}
+
+	if (!disallow.range || !disallow.num)
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"P2P: all freqs allowed based on freq priorities");
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "P2P: update disallowed frequencies");
+	os_free(global->p2p_disallow_freq.range);
+	global->p2p_disallow_freq.range = disallow.range;
+	global->p2p_disallow_freq.num = disallow.num;
+
+	if (!avoid.range || !avoid.num)
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"P2P: all freqs allowed for GO based on freq priorities");
+
+	wpa_dbg(wpa_s, MSG_DEBUG,
+		"P2P: Set no_go_freq based on freq priorities");
+	p2p_set_no_go_freq(wpa_s->global->p2p, &avoid);
+
+	/*
+	 * This will trigger move of GOs in case that the channel isn't valid or
+	 * in case the GO can now use a better channel
+	 */
+	wpas_p2p_update_channel_list(wpa_s);
+
+	/* no need to free disallow.range as it now referenced */
+	os_free(avoid.range);
+}
+

@@ -3863,6 +3863,9 @@ int wpas_freq_priority_list_set(struct wpa_supplicant *wpa_s,
 	dl_list_add(head, &global->freq_priority);
 	dl_list_del(head);
 
+#ifdef CONFIG_P2P
+	wpas_p2p_freq_priority_changed(wpa_s);
+#endif /* CONFIG_P2P */
 	return 0;
 }
 
