@@ -8075,7 +8075,7 @@ static void wpas_p2p_consider_moving_one_go(struct wpa_supplicant *wpa_s,
 			flags = freqs[i].flags;
 
 			/* The channel is invalid, must change it */
-			if (!p2p_supported_freq(wpa_s->global->p2p, freq)) {
+			if (!p2p_supported_freq_go(wpa_s->global->p2p, freq)) {
 				wpa_dbg(wpa_s, MSG_DEBUG,
 					"Freq=%dMHz not longer valid for GO",
 					freq);
