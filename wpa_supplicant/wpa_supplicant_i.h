@@ -14,7 +14,6 @@
 #include "common/sae.h"
 #include "wps/wps_defs.h"
 #include "config_ssid.h"
-#include "utils/traffic_stats.h"
 
 extern const char *wpa_supplicant_version;
 extern const char *wpa_supplicant_license;
@@ -271,8 +270,6 @@ struct wpa_global {
 	} conc_pref;
 	unsigned int p2p_per_sta_psk:1;
 	unsigned int p2p_fail_on_wps_complete:1;
-
-	struct os_time traffic_sample_interval;
 
 #ifdef CONFIG_WIFI_DISPLAY
 	int wifi_display;
@@ -769,7 +766,6 @@ struct wpa_supplicant {
 	struct wpa_driver_scan_params *autoscan_params;
 	void *autoscan_priv;
 
-	struct traffic_info traffic_data;
 	struct wpa_ssid *connect_without_scan;
 
 	struct wps_ap_info *wps_ap;

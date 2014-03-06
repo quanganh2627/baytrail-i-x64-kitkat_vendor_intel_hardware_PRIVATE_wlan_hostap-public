@@ -9,8 +9,6 @@
 #ifndef STA_INFO_H
 #define STA_INFO_H
 
-#include "utils/traffic_stats.h"
-
 /* STA flags */
 #define WLAN_STA_AUTH BIT(0)
 #define WLAN_STA_ASSOC BIT(1)
@@ -137,7 +135,6 @@ struct sta_info {
 
 	struct os_reltime connected_time;
 
-	struct traffic_info traffic_data;
 #ifdef CONFIG_SAE
 	struct sae_data *sae;
 #endif /* CONFIG_SAE */

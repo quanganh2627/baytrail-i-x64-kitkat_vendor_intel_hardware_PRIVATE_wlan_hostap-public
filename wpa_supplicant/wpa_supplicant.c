@@ -51,7 +51,6 @@
 #include "offchannel.h"
 #include "hs20_supplicant.h"
 #include "wnm_sta.h"
-#include "traffic_monitor.h"
 
 const char *wpa_supplicant_version =
 "wpa_supplicant v" VERSION_STR "\n"
@@ -731,8 +730,6 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 		wpa_supplicant_stop_bgscan(wpa_s);
 #endif /* CONFIG_BGSCAN */
 
-	if (state == WPA_DISCONNECTED)
-		traffic_stats_reset(&wpa_s->traffic_data);
 	if (state == WPA_AUTHENTICATING)
 		wpa_supplicant_stop_autoscan(wpa_s);
 

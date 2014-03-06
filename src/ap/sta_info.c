@@ -595,7 +595,6 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
 	sta->ssid = &hapd->conf->ssid;
 	ap_sta_remove_in_other_bss(hapd, sta);
 
-	sta->traffic_data.updated = TRUE;
 	return sta;
 }
 
