@@ -1239,6 +1239,12 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 	struct wpa_supplicant *iface;
 	const char *rn, *rn2;
 
+	if (wpa_s->pno || wpa_s->pno_sched_pending) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Prevent canceling scheduled scan - PNO is in progress");
+		return;
+	}
+
 	if (wpa_s->sched_scanning) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Cancelling sched scan");
 		eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, wpa_s,
