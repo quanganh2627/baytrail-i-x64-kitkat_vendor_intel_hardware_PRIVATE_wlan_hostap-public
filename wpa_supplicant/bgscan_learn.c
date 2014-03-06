@@ -18,9 +18,6 @@
 #include "driver_i.h"
 #include "scan.h"
 #include "bgscan.h"
-#include "traffic_monitor.h"
-
-#define TRAFFIC_INTERVAL_SEC 5
 
 struct bgscan_learn_bss {
 	struct dl_list list;
@@ -42,11 +39,8 @@ struct bgscan_learn_data {
 	struct dl_list bss;
 	int *supp_freqs;
 	int probe_idx;
-	unsigned long traffic_threshold;	/* bytes/sec */
 };
 
-
-static void bgscan_learn_timeout(void *eloop_ctx, void *timeout_ctx);
 
 static void bss_free(struct bgscan_learn_bss *bss)
 {
@@ -273,7 +267,7 @@ static int * bgscan_learn_get_probe_freq(struct bgscan_learn_data *data,
 }
 
 
-static int bgscan_learn_req_scan(void *eloop_ctx, void *timeout_ctx)
+static void bgscan_learn_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct bgscan_learn_data *data = eloop_ctx;
 	struct wpa_supplicant *wpa_s = data->wpa_s;
@@ -281,7 +275,6 @@ static int bgscan_learn_req_scan(void *eloop_ctx, void *timeout_ctx)
 	int *freqs = NULL;
 	size_t count, i;
 	char msg[100], *pos;
-	int ret;
 
 	os_memset(&params, 0, sizeof(params));
 	params.num_ssids = 1;
@@ -312,39 +305,13 @@ static int bgscan_learn_req_scan(void *eloop_ctx, void *timeout_ctx)
 	}
 
 	wpa_printf(MSG_DEBUG, "bgscan learn: Request a background scan");
-	ret = wpa_supplicant_trigger_scan(wpa_s, &params);
-	if (ret) {
+	if (wpa_supplicant_trigger_scan(wpa_s, &params)) {
 		wpa_printf(MSG_DEBUG, "bgscan learn: Failed to trigger scan");
 		eloop_register_timeout(data->scan_interval, 0,
 				       bgscan_learn_timeout, data, NULL);
-	} else {
+	} else
 		os_get_reltime(&data->last_bgscan);
-	}
 	os_free(freqs);
-	return ret;
-}
-
-
-static void bgscan_learn_timeout(void *eloop_ctx, void *timeout_ctx)
-{
-	struct bgscan_learn_data *data = eloop_ctx;
-	struct traffic_stats stats;
-
-	if (!data->traffic_threshold ||
-	    get_traffic_stats(data->wpa_s->global, &stats) ||
-	    stats.bytes_over_interval <
-	    data->traffic_threshold * TRAFFIC_INTERVAL_SEC) {
-		if (bgscan_learn_req_scan(eloop_ctx, timeout_ctx))
-			eloop_register_timeout(data->scan_interval, 0,
-					       bgscan_learn_timeout,
-					       data, NULL);
-	    return;
-	}
-	wpa_printf(MSG_DEBUG,
-		   "bgscan learn: skip scanning due to high traffic");
-	eloop_register_timeout(data->wpa_s->global->traffic_sample_interval.sec,
-			       data->wpa_s->global->traffic_sample_interval.usec,
-			       bgscan_learn_timeout, data, NULL);
 }
 
 
@@ -372,13 +339,6 @@ static int bgscan_learn_get_params(struct bgscan_learn_data *data,
 	pos++;
 	data->long_interval = atoi(pos);
 	pos = os_strchr(pos, ':');
-	if (pos == NULL || pos[1] != '-' || pos[2] != 't')
-			data->traffic_threshold = 0;
-	else {
-		pos += 3;
-		data->traffic_threshold = atol(pos);
-		pos = os_strchr(pos, ':');
-	}
 	if (pos) {
 		pos++;
 		data->fname = os_strdup(pos);
@@ -448,23 +408,15 @@ static void * bgscan_learn_init(struct wpa_supplicant *wpa_s,
 		return NULL;
 	}
 
-	wpa_printf(MSG_DEBUG, "bgscan learn: Signal strength threshold %d "
-		   "Short bgscan interval %d  Long bgscan interval %d "
-		   "traffic threshold %ld",
+	wpa_printf(MSG_DEBUG, "bgscan learn: Signal strength threshold %d  "
+		   "Short bgscan interval %d  Long bgscan interval %d",
 		   data->signal_threshold, data->short_interval,
-		   data->long_interval, data->traffic_threshold);
+		   data->long_interval);
 
 	if (data->signal_threshold &&
 	    wpa_drv_signal_monitor(wpa_s, data->signal_threshold, 4) < 0) {
 		wpa_printf(MSG_ERROR, "bgscan learn: Failed to enable "
 			   "signal strength monitoring");
-	}
-
-	if (data->traffic_threshold &&
-	    start_traffic_stats(wpa_s->global, TRAFFIC_INTERVAL_SEC, 0) < 0) {
-		wpa_printf(MSG_ERROR,
-			   "bgscan learn: traffic monitor disabled");
-		data->traffic_threshold = 0;
 	}
 
 	data->supp_freqs = bgscan_learn_get_supp_freqs(wpa_s);
@@ -501,8 +453,6 @@ static void bgscan_learn_deinit(void *priv)
 	eloop_cancel_timeout(bgscan_learn_timeout, data, NULL);
 	if (data->signal_threshold)
 		wpa_drv_signal_monitor(data->wpa_s, 0, 0);
-	if (data->traffic_threshold)
-		stop_traffic_stats(data->wpa_s->global);
 	os_free(data->fname);
 	dl_list_for_each_safe(bss, n, &data->bss, struct bgscan_learn_bss,
 			      list) {
