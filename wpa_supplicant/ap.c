@@ -70,16 +70,10 @@ no_vht:
 #endif /* CONFIG_IEEE80211N */
 
 
-static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
-				  struct wpa_ssid *ssid,
-				  struct hostapd_config *conf)
+int wpas_conf_ap_freq(struct wpa_supplicant *wpa_s,
+		      struct wpa_ssid *ssid,
+		      struct hostapd_config *conf)
 {
-	struct hostapd_bss_config *bss = conf->bss[0];
-
-	conf->driver = wpa_s->driver;
-
-	os_strlcpy(bss->iface, wpa_s->ifname, sizeof(bss->iface));
-
 	conf->hw_mode = ieee80211_freq_to_chan(ssid->frequency,
 					       &conf->channel);
 	if (conf->hw_mode == NUM_HOSTAPD_MODES) {
@@ -150,6 +144,22 @@ static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
 		}
 	}
 #endif /* CONFIG_IEEE80211N */
+
+	return 0;
+}
+
+
+static int wpa_supplicant_conf_ap(struct wpa_supplicant *wpa_s,
+				  struct wpa_ssid *ssid,
+				  struct hostapd_config *conf)
+{
+	struct hostapd_bss_config *bss = conf->bss[0];
+
+	conf->driver = wpa_s->driver;
+	os_strlcpy(bss->iface, wpa_s->ifname, sizeof(bss->iface));
+
+	if (wpas_conf_ap_freq(wpa_s, ssid, conf))
+		return -1;
 
 #ifdef CONFIG_P2P
 	if (conf->hw_mode == HOSTAPD_MODE_IEEE80211G &&

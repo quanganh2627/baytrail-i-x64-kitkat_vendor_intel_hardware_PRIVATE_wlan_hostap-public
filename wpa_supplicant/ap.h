@@ -10,8 +10,12 @@
 #ifndef AP_H
 #define AP_H
 
+struct hostapd_config;
 int wpa_supplicant_create_ap(struct wpa_supplicant *wpa_s,
 			     struct wpa_ssid *ssid);
+int wpas_conf_ap_freq(struct wpa_supplicant *wpa_s,
+		      struct wpa_ssid *ssid,
+		      struct hostapd_config *conf);
 void wpa_supplicant_ap_deinit(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_ap_rx_eapol(struct wpa_supplicant *wpa_s,
 				const u8 *src_addr, const u8 *buf, size_t len);
