@@ -115,3 +115,12 @@ void bgscan_notify_signal_change(struct wpa_supplicant *wpa_s, int above,
 						    current_noise,
 						    current_txrate);
 }
+
+void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
+			       enum traffic_load traffic_load,
+			       int vi_vo_present)
+{
+	if (wpa_s->bgscan && wpa_s->bgscan_priv)
+		wpa_s->bgscan->notify_tcm_changed(wpa_s->bgscan_priv,
+						  traffic_load, vi_vo_present);
+}

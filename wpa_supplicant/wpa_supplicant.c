@@ -4818,5 +4818,13 @@ int wpas_freq_flags(struct wpa_supplicant *wpa_s, int freq, unsigned int flags)
 
 void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s)
 {
-	wpa_printf(MSG_DEBUG, "TCM changed");
+	struct wpa_supplicant *ifs;
+	struct tcm_data *tcm_data = &wpa_s->radio->tcm_data;
+
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		/* Notify station interfaces about the new traffic conditions */
+		bgscan_notify_tcm_changed(ifs, tcm_data->traffic_load,
+					  tcm_data->vi_vo_present);
+	}
 }

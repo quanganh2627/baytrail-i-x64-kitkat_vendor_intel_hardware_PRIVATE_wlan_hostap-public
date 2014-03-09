@@ -25,6 +25,9 @@ struct bgscan_ops {
 				     int current_signal,
 				     int current_noise,
 				     int current_txrate);
+	void (*notify_tcm_changed)(void *priv,
+				   enum traffic_load traffic_load,
+				   int vi_vo_present);
 };
 
 #ifdef CONFIG_BGSCAN
@@ -38,6 +41,9 @@ void bgscan_notify_beacon_loss(struct wpa_supplicant *wpa_s);
 void bgscan_notify_signal_change(struct wpa_supplicant *wpa_s, int above,
 				 int current_signal, int current_noise,
 				 int current_txrate);
+void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
+			       enum traffic_load traffic_load,
+			       int vi_vo_present);
 
 #else /* CONFIG_BGSCAN */
 
@@ -65,6 +71,12 @@ static inline void bgscan_notify_signal_change(struct wpa_supplicant *wpa_s,
 					       int above, int current_signal,
 					       int current_noise,
 					       int current_txrate)
+{
+}
+
+static inline void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
+					     enum traffic_load traffic_load,
+					     int vi_vo_present)
 {
 }
 
