@@ -2910,6 +2910,22 @@ static void wpa_supplicant_notify_avoid_freq(struct wpa_supplicant *wpa_s,
 }
 
 
+static void wpa_supplicant_event_tcm_changed(struct wpa_supplicant *wpa_s,
+					     union wpa_event_data *data)
+{
+	struct tcm_data *tcm_data = &wpa_s->radio->tcm_data;
+
+	if (data->tcm_changed.traffic_load == tcm_data->traffic_load &&
+	    data->tcm_changed.vi_vo_present == tcm_data->vi_vo_present)
+		return;
+
+	tcm_data->traffic_load = data->tcm_changed.traffic_load;
+	tcm_data->vi_vo_present = !!data->tcm_changed.vi_vo_present;
+
+	wpas_handle_tcm_changed(wpa_s);
+}
+
+
 void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			  union wpa_event_data *data)
 {
@@ -3454,6 +3470,9 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			data->connect_failed_reason.addr,
 			data->connect_failed_reason.code);
 #endif /* CONFIG_AP */
+		break;
+	case EVENT_TCM_CHANGED:
+		wpa_supplicant_event_tcm_changed(wpa_s, data);
 		break;
 	default:
 		wpa_msg(wpa_s, MSG_INFO, "Unknown event %d", event);

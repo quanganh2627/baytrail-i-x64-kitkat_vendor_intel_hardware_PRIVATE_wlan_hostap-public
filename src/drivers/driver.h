@@ -3224,7 +3224,16 @@ enum wpa_event_type {
 	 * to reduce issues due to interference or internal co-existence
 	 * information in the driver.
 	 */
-	EVENT_AVOID_FREQUENCIES
+	EVENT_AVOID_FREQUENCIES,
+
+	/*
+	 * EVENT_TCM_CHANGED - Traffic conditions changed event
+	 *
+	 * This event indicates that one (or more) of the monitored traffic
+	 * conditions has changed. Currently supported traffic conditions are:
+	 * Video or Voice traffic being present or not, and traffic load.
+	 */
+	EVENT_TCM_CHANGED,
 };
 
 
@@ -3850,6 +3859,26 @@ union wpa_event_data {
 	 * This is used as the data with EVENT_AVOID_FREQUENCIES.
 	 */
 	struct wpa_freq_range_list freq_range;
+
+	/**
+	 * tcm_changed - Data for EVENT_TCM_CHANGED
+	 *
+	 * This is aggregated status of all interfaces sharing the radio.
+	 */
+	struct tcm_changed {
+		/**
+		 * vi_vo_present - Whether VI/VO traffic is currently present
+		 *
+		 * 1 if Video or Voice traffic is currently present,
+		 * 0 otherwise.
+		 */
+		unsigned int vi_vo_present;
+
+		/**
+		 * traffic_load - Current traffic load
+		 */
+		enum traffic_load traffic_load;
+	} tcm_changed;
 };
 
 /**

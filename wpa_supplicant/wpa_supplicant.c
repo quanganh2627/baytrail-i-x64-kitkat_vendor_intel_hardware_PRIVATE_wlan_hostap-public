@@ -4815,3 +4815,8 @@ int wpas_freq_flags(struct wpa_supplicant *wpa_s, int freq, unsigned int flags)
 	}
 	return 0;
 }
+
+void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s)
+{
+	wpa_printf(MSG_DEBUG, "TCM changed");
+}

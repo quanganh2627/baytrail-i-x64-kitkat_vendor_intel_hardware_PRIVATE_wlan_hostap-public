@@ -344,6 +344,18 @@ enum wpa_ctrl_req_type {
 	NUM_WPA_CTRL_REQS
 };
 
+/**
+ * enum traffic_load - traffic load levels
+ *
+ * These enumeration values are used to indicate the current traffic load over
+ * all interfaces sharing the radio.
+ */
+enum traffic_load {
+	TRAFFIC_LOAD_LOW,
+	TRAFFIC_LOAD_MEDIUM,
+	TRAFFIC_LOAD_HIGH,
+};
+
 /* Maximum number of EAP methods to store for EAP server user information */
 #define EAP_MAX_METHODS 8
 

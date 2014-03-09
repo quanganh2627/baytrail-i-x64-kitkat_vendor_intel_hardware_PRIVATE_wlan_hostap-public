@@ -296,6 +296,19 @@ struct wpa_radio {
 			* available */
 	struct dl_list ifaces; /* struct wpa_supplicant::radio_list entries */
 	struct dl_list work; /* struct wpa_radio_work::list entries */
+	struct tcm_data {
+		/*
+		 * When set, indicates that Video or Voice traffic is present on
+		 * one (or more) of the interfaces sharing this radio.
+		 */
+		unsigned int vi_vo_present:1;
+
+		/*
+		 * Aggregated traffic load on all the interfaces sharing this
+		 * radio.
+		 */
+		enum traffic_load traffic_load;
+	} tcm_data;
 };
 
 /**
@@ -960,6 +973,7 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 		    size_t ssid_len);
 void wpas_request_connection(struct wpa_supplicant *wpa_s);
 int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf);
+void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s);
 
 /**
  * wpa_supplicant_ctrl_iface_ctrl_rsp_handle - Handle a control response
