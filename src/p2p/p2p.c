@@ -1774,20 +1774,15 @@ static void p2p_rx_action_public(struct p2p_data *p2p, const u8 *da,
 	case WLAN_PA_VENDOR_SPECIFIC:
 		data++;
 		len--;
-		if (len < 3)
+		if (len < 4)
 			return;
-		if (WPA_GET_BE24(data) != OUI_WFA)
-			return;
-
-		data += 3;
-		len -= 3;
-		if (len < 1)
+		if (WPA_GET_BE32(data) != P2P_IE_VENDOR_TYPE)
 			return;
 
-		if (*data != P2P_OUI_TYPE)
-			return;
+		data += 4;
+		len -= 4;
 
-		p2p_rx_p2p_action(p2p, sa, data + 1, len - 1, freq);
+		p2p_rx_p2p_action(p2p, sa, data, len, freq);
 		break;
 	case WLAN_PA_GAS_INITIAL_REQ:
 		p2p_rx_gas_initial_req(p2p, sa, data + 1, len - 1, freq);
@@ -1820,15 +1815,10 @@ void p2p_rx_action(struct p2p_data *p2p, const u8 *da, const u8 *sa,
 	if (len < 4)
 		return;
 
-	if (WPA_GET_BE24(data) != OUI_WFA)
+	if (WPA_GET_BE32(data) != P2P_IE_VENDOR_TYPE)
 		return;
-	data += 3;
-	len -= 3;
-
-	if (*data != P2P_OUI_TYPE)
-		return;
-	data++;
-	len--;
+	data += 4;
+	len -= 4;
 
 	/* P2P action frame */
 	p2p_dbg(p2p, "RX P2P Action from " MACSTR, MAC2STR(sa));
@@ -3137,6 +3127,10 @@ void p2p_send_action_cb(struct p2p_data *p2p, unsigned int freq, const u8 *dst,
 	p2p->pending_action_state = P2P_NO_PENDING_ACTION;
 	switch (state) {
 	case P2P_NO_PENDING_ACTION:
+		if (p2p->send_action_in_progress) {
+			p2p->send_action_in_progress = 0;
+			p2p->cfg->send_action_done(p2p->cfg->cb_ctx);
+		}
 		if (p2p->after_scan_tx_in_progress) {
 			p2p->after_scan_tx_in_progress = 0;
 			if (p2p->start_after_scan != P2P_AFTER_SCAN_NOTHING &&

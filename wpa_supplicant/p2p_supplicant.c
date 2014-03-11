@@ -3895,9 +3895,13 @@ int wpas_p2p_add_p2pdev_interface(struct wpa_supplicant *wpa_s)
 	iface.p2p_mgmt = 1;
 	iface.ifname = wpa_s->pending_interface_name;
 	iface.driver = wpa_s->driver->name;
+	iface.ctrl_interface = wpa_s->conf->ctrl_interface;
 	iface.driver_param = wpa_s->conf->driver_param;
-	iface.conf_p2p_dev = wpa_s->conf_p2p_dev;
 
+	/*
+	 * If a P2P Device configuration file was given, use it as the interface
+	 * configuration file (instead of using parent's configuration file.
+	 */
 	if (wpa_s->conf_p2p_dev) {
 		iface.confname = wpa_s->conf_p2p_dev;
 		iface.ctrl_interface = NULL;
@@ -3905,6 +3909,7 @@ int wpas_p2p_add_p2pdev_interface(struct wpa_supplicant *wpa_s)
 		iface.confname = wpa_s->confname;
 		iface.ctrl_interface = wpa_s->conf->ctrl_interface;
 	}
+	iface.conf_p2p_dev = NULL;
 
 	p2pdev_wpa_s = wpa_supplicant_add_iface(wpa_s->global, &iface);
 	if (!p2pdev_wpa_s) {

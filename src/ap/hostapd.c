@@ -350,7 +350,7 @@ static void hostapd_cleanup_iface(struct hostapd_iface *iface)
 
 static void hostapd_clear_wep(struct hostapd_data *hapd)
 {
-	if (hapd->drv_priv && hapd->iface->driver_ap_teardown == 0) {
+	if (hapd->drv_priv && !hapd->iface->driver_ap_teardown) {
 		hostapd_set_privacy(hapd, 0);
 		hostapd_broadcast_wep_clear(hapd);
 	}
@@ -401,7 +401,7 @@ static int hostapd_flush_old_stations(struct hostapd_data *hapd, u16 reason)
 	if (hostapd_drv_none(hapd) || hapd->drv_priv == NULL)
 		return 0;
 
-	if (hapd->iface->driver_ap_teardown == 0) {
+	if (!hapd->iface->driver_ap_teardown) {
 		wpa_dbg(hapd->msg_ctx, MSG_DEBUG,
 			"Flushing old station entries");
 
@@ -760,7 +760,7 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 		return -1;
 	}
 
-	if (wpa_debug_level == MSG_MSGDUMP)
+	if (wpa_debug_level <= MSG_MSGDUMP)
 		conf->radius->msg_dumps = 1;
 #ifndef CONFIG_NO_RADIUS
 	hapd->radius = radius_client_init(hapd, conf->radius);
@@ -1013,8 +1013,13 @@ static int setup_interface(struct hostapd_iface *iface)
 	struct hostapd_data *hapd = iface->bss[0];
 	size_t i;
 
-	iface->driver_ap_teardown_support =
-		    !!(iface->drv_flags & WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
+	/*
+	 * It is possible that setup_interface() is called after the interface
+	 * was disabled etc., in which case driver_ap_teardown is possibly set
+	 * to 1. Clear it here so any other key/station deletion, which is not
+	 * part of a teardown flow, would also call the relevant driver
+	 * callbacks.
+	 */
 	iface->driver_ap_teardown = 0;
 
 	if (!iface->phy[0]) {
@@ -1635,7 +1640,9 @@ int hostapd_disable_iface(struct hostapd_iface *hapd_iface)
 	driver = hapd_iface->bss[0]->driver;
 	drv_priv = hapd_iface->bss[0]->drv_priv;
 
-	hapd_iface->driver_ap_teardown = hapd_iface->driver_ap_teardown_support;
+	hapd_iface->driver_ap_teardown =
+		!!(hapd_iface->drv_flags &
+		   WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
 
 	/* same as hostapd_interface_deinit without deinitializing ctrl-iface */
 	for (j = 0; j < hapd_iface->num_bss; j++) {
@@ -1817,6 +1824,7 @@ int hostapd_add_iface(struct hapd_interfaces *interfaces, char *buf)
 			if (start_ctrl_iface_bss(hapd) < 0 ||
 			    (hapd_iface->state == HAPD_IFACE_ENABLED &&
 			     hostapd_setup_bss(hapd, -1))) {
+				hapd_iface->bss[hapd_iface->num_bss - 1] = NULL;
 				hapd_iface->conf->num_bss--;
 				hapd_iface->num_bss--;
 				wpa_printf(MSG_DEBUG, "%s: free hapd %p %s",
@@ -1886,14 +1894,17 @@ fail:
 		if (hapd_iface->bss) {
 			for (i = 0; i < hapd_iface->num_bss; i++) {
 				hapd = hapd_iface->bss[i];
-				if (hapd && hapd_iface->interfaces &&
+				if (!hapd)
+					continue;
+				if (hapd_iface->interfaces &&
 				    hapd_iface->interfaces->ctrl_iface_deinit)
 					hapd_iface->interfaces->
 						ctrl_iface_deinit(hapd);
 				wpa_printf(MSG_DEBUG, "%s: free hapd %p (%s)",
 					   __func__, hapd_iface->bss[i],
-					hapd_iface->bss[i]->conf->iface);
-				os_free(hapd_iface->bss[i]);
+					   hapd->conf->iface);
+				os_free(hapd);
+				hapd_iface->bss[i] = NULL;
 			}
 			os_free(hapd_iface->bss);
 		}
@@ -1950,7 +1961,9 @@ int hostapd_remove_iface(struct hapd_interfaces *interfaces, char *buf)
 		if (!os_strcmp(hapd_iface->conf->bss[0]->iface, buf)) {
 			wpa_printf(MSG_INFO, "Remove interface '%s'", buf);
 			hapd_iface->driver_ap_teardown =
-					hapd_iface->driver_ap_teardown_support;
+				!!(hapd_iface->drv_flags &
+				   WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
+
 			hostapd_interface_deinit_free(hapd_iface);
 			k = i;
 			while (k < (interfaces->count - 1)) {
@@ -1965,7 +1978,8 @@ int hostapd_remove_iface(struct hapd_interfaces *interfaces, char *buf)
 		for (j = 0; j < hapd_iface->conf->num_bss; j++) {
 			if (!os_strcmp(hapd_iface->conf->bss[j]->iface, buf)) {
 				hapd_iface->driver_ap_teardown =
-					hapd_iface->driver_ap_teardown_support;
+					!(hapd_iface->drv_flags &
+					  WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT);
 				return hostapd_remove_bss(hapd_iface, j);
 			}
 		}
@@ -2012,7 +2026,8 @@ void hostapd_new_assoc_sta(struct hostapd_data *hapd, struct sta_info *sta,
 	/* Start accounting here, if IEEE 802.1X and WPA are not used.
 	 * IEEE 802.1X/WPA code will start accounting after the station has
 	 * been authorized. */
-	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa) {
+	if (!hapd->conf->ieee802_1x && !hapd->conf->wpa && !hapd->conf->osen) {
+		ap_sta_set_authorized(hapd, sta, 1);
 		os_get_reltime(&sta->connected_time);
 		accounting_sta_start(hapd, sta);
 	}

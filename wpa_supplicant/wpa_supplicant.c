@@ -396,8 +396,10 @@ static void wpa_supplicant_cleanup(struct wpa_supplicant *wpa_s)
 	os_free(wpa_s->confanother);
 	wpa_s->confanother = NULL;
 
+#ifdef CONFIG_P2P
 	os_free(wpa_s->conf_p2p_dev);
 	wpa_s->conf_p2p_dev = NULL;
+#endif /* CONFIG_P2P */
 
 	wpa_sm_set_eapol(wpa_s->wpa, NULL);
 	eapol_sm_deinit(wpa_s->eapol);
@@ -577,14 +579,16 @@ static void wpa_supplicant_start_bgscan(struct wpa_supplicant *wpa_s)
 		name = wpa_s->current_ssid->bgscan;
 	else
 		name = wpa_s->conf->bgscan;
-	if (name == NULL || os_strlen(name) == 0)
+	if (name == NULL || name[0] == '\0')
 		return;
 	if (wpas_driver_bss_selection(wpa_s))
 		return;
 	if (wpa_s->current_ssid == wpa_s->bgscan_ssid)
 		return;
+#ifdef CONFIG_P2P
 	if (wpa_s->p2p_group_interface != NOT_P2P_GROUP_INTERFACE)
 		return;
+#endif /* CONFIG_P2P */
 
 	bgscan_deinit(wpa_s);
 	if (wpa_s->current_ssid) {
@@ -1738,6 +1742,14 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	if (ssid->mode == WPAS_MODE_IBSS && ssid->frequency > 0 &&
 	    params.freq == 0)
 		params.freq = ssid->frequency; /* Initial channel for IBSS */
+
+	if (ssid->mode == WPAS_MODE_IBSS) {
+		if (ssid->beacon_int)
+			params.beacon_int = ssid->beacon_int;
+		else
+			params.beacon_int = wpa_s->conf->beacon_int;
+	}
+
 	params.wpa_ie = wpa_ie;
 	params.wpa_ie_len = wpa_ie_len;
 	params.pairwise_suite = cipher_pairwise;
@@ -3398,7 +3410,10 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		wpa_s->confanother = os_rel2abs_path(iface->confanother);
 		wpa_config_read(wpa_s->confanother, wpa_s->conf);
 
+#ifdef CONFIG_P2P
 		wpa_s->conf_p2p_dev = os_rel2abs_path(iface->conf_p2p_dev);
+		wpa_config_read(wpa_s->conf_p2p_dev, wpa_s->conf);
+#endif /* CONFIG_P2P */
 
 		/*
 		 * Override ctrl_interface and driver_param if set on command

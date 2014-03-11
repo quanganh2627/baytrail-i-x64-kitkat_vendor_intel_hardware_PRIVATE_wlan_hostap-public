@@ -304,6 +304,7 @@ struct wpa_driver_nl80211_data {
 	unsigned int hostapd:1;
 	unsigned int start_mode_ap:1;
 	unsigned int start_iface_up:1;
+	unsigned int test_use_roc_tx:1;
 
 	u64 remain_on_chan_cookie;
 	u64 send_action_cookie;
@@ -1238,7 +1239,8 @@ static void wpa_driver_nl80211_event_rtm_newlink(void *ctx,
 			wpa_supplicant_event(drv->ctx,
 					     EVENT_INTERFACE_DISABLED, NULL);
 
-			/* Try to get drv again, since it may be removed as
+			/*
+			 * Try to get drv again, since it may be removed as
 			 * part of the EVENT_INTERFACE_DISABLED handling for
 			 * dynamic interfaces
 			 */
@@ -8399,6 +8401,12 @@ retry:
 	wpa_printf(MSG_DEBUG, "  * freq=%d", params->freq);
 	NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, params->freq);
 
+	if (params->beacon_int > 0) {
+		wpa_printf(MSG_DEBUG, "  * beacon_int=%d", params->beacon_int);
+		NLA_PUT_U32(msg, NL80211_ATTR_BEACON_INTERVAL,
+			    params->beacon_int);
+	}
+
 	ret = nl80211_set_conn_keys(params, msg);
 	if (ret)
 		goto nla_put_failure;
@@ -9465,8 +9473,8 @@ static int i802_set_wds_sta(void *priv, const u8 *addr, int aid, int val,
 					name);
 
 		i802_set_sta_vlan(priv, addr, bss->ifname, 0);
-		return wpa_driver_nl80211_if_remove(priv, WPA_IF_AP_VLAN,
-						    name);
+		nl80211_remove_iface(drv, if_nametoindex(name));
+		return 0;
 	}
 }
 
@@ -9961,7 +9969,8 @@ static int nl80211_send_frame_cmd(struct i802_bss *bss,
 		NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, freq);
 	if (wait)
 		NLA_PUT_U32(msg, NL80211_ATTR_DURATION, wait);
-	if (offchanok && (drv->capa.flags & WPA_DRIVER_FLAGS_OFFCHANNEL_TX))
+	if (offchanok && ((drv->capa.flags & WPA_DRIVER_FLAGS_OFFCHANNEL_TX) ||
+			  drv->test_use_roc_tx))
 		NLA_PUT_FLAG(msg, NL80211_ATTR_OFFCHANNEL_TX_OK);
 #ifndef CONFIG_WCD_WA_FORCE_OFDM_RATE
 	if (no_cck)
@@ -10548,6 +10557,13 @@ static int nl80211_set_param(void *priv, const char *param)
 		struct i802_bss *bss = priv;
 		struct wpa_driver_nl80211_data *drv = bss->drv;
 		drv->capa.flags &= ~WPA_DRIVER_FLAGS_SME;
+	}
+
+	if (os_strstr(param, "no_offchannel_tx=1")) {
+		struct i802_bss *bss = priv;
+		struct wpa_driver_nl80211_data *drv = bss->drv;
+		drv->capa.flags &= ~WPA_DRIVER_FLAGS_OFFCHANNEL_TX;
+		drv->test_use_roc_tx = 1;
 	}
 
 	return 0;
@@ -11973,6 +11989,29 @@ error:
 	return ret;
 }
 
+
+#ifdef CONFIG_TESTING_OPTIONS
+static int cmd_reply_handler(struct nl_msg *msg, void *arg)
+{
+	struct genlmsghdr *gnlh = nlmsg_data(nlmsg_hdr(msg));
+	struct wpabuf *buf = arg;
+
+	if (!buf)
+		return NL_SKIP;
+
+	if ((size_t) genlmsg_attrlen(gnlh, 0) > wpabuf_tailroom(buf)) {
+		wpa_printf(MSG_INFO, "nl80211: insufficient buffer space for reply");
+		return NL_SKIP;
+	}
+
+	wpabuf_put_data(buf, genlmsg_attrdata(gnlh, 0),
+			genlmsg_attrlen(gnlh, 0));
+
+	return NL_SKIP;
+}
+#endif /* CONFIG_TESTING_OPTIONS */
+
+
 static int vendor_reply_handler(struct nl_msg *msg, void *arg)
 {
 	struct nlattr *tb[NL80211_ATTR_MAX + 1];
@@ -11991,9 +12030,8 @@ static int vendor_reply_handler(struct nl_msg *msg, void *arg)
 	if (!nl_vendor_reply)
 		return NL_SKIP;
 
-	if ((size_t)nla_len(nl_vendor_reply) > wpabuf_tailroom(buf)) {
-		wpa_printf(MSG_ERROR,
-			   "Vendor command: insufficient buffer space for reply!");
+	if ((size_t) nla_len(nl_vendor_reply) > wpabuf_tailroom(buf)) {
+		wpa_printf(MSG_INFO, "nl80211: Vendor command: insufficient buffer space for reply");
 		return NL_SKIP;
 	}
 
@@ -12003,6 +12041,7 @@ static int vendor_reply_handler(struct nl_msg *msg, void *arg)
 
 	return NL_SKIP;
 }
+
 
 static int nl80211_vendor_cmd(void *priv, unsigned int vendor_id,
 			      unsigned int subcmd, const u8 *data,
@@ -12016,6 +12055,20 @@ static int nl80211_vendor_cmd(void *priv, unsigned int vendor_id,
 	msg = nlmsg_alloc();
 	if (!msg)
 		return -ENOMEM;
+
+#ifdef CONFIG_TESTING_OPTIONS
+	if (vendor_id == 0xffffffff) {
+		nl80211_cmd(drv, msg, 0, subcmd);
+		if (nlmsg_append(msg, (void *) data, data_len, NLMSG_ALIGNTO) <
+		    0)
+			goto nla_put_failure;
+		ret = send_and_recv_msgs(drv, msg, cmd_reply_handler, buf);
+		if (ret)
+			wpa_printf(MSG_DEBUG, "nl80211: command failed err=%d",
+				   ret);
+		return ret;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 	nl80211_cmd(drv, msg, 0, NL80211_CMD_VENDOR);
 	if (nl80211_set_iface_id(msg, bss) < 0)
@@ -12035,6 +12088,7 @@ nla_put_failure:
 	nlmsg_free(msg);
 	return -ENOBUFS;
 }
+
 
 static int nl80211_set_qos_map(void *priv, const u8 *qos_map_set,
 			       u8 qos_map_set_len)

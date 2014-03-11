@@ -770,7 +770,7 @@ static int ieee80211ac_supported_vht_capab(struct hostapd_iface *iface)
 	VHT_CAP_CHECK(VHT_CAP_MU_BEAMFORMEE_CAPABLE);
 	VHT_CAP_CHECK(VHT_CAP_VHT_TXOP_PS);
 	VHT_CAP_CHECK(VHT_CAP_HTC_VHT);
-	VHT_CAP_CHECK_MAX(VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT);
+	VHT_CAP_CHECK_MAX(VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MAX);
 	VHT_CAP_CHECK(VHT_CAP_VHT_LINK_ADAPTATION_VHT_UNSOL_MFB);
 	VHT_CAP_CHECK(VHT_CAP_VHT_LINK_ADAPTATION_VHT_MRQ_MFB);
 	VHT_CAP_CHECK(VHT_CAP_RX_ANTENNA_PATTERN);
@@ -986,8 +986,6 @@ int hostapd_select_hw_mode(struct hostapd_iface *iface)
 		hostapd_notify_bad_chans(iface);
 		return -3;
 	}
-
-	return 0;
 }
 
 

@@ -64,14 +64,16 @@ struct wpa_interface {
 	 */
 	const char *confanother;
 
+#ifdef CONFIG_P2P
 	/**
-	 * conf_p2p_dev - Additional configuration file used for the P2P Device
-	 * functionality.
+	 * conf_p2p_dev - Additional configuration file used to hold the
+	 * P2P Device configuration parameters.
 	 *
 	 * This can also be %NULL. In such a case, if a P2P Device dedicated
 	 * interfaces is created, the main configuration file will be used.
 	 */
 	const char *conf_p2p_dev;
+#endif /* CONFIG_P2P */
 
 	/**
 	 * ctrl_interface - Control interface parameter
@@ -404,7 +406,10 @@ struct wpa_supplicant {
 
 	char *confname;
 	char *confanother;
+
+#ifdef CONFIG_P2P
 	char *conf_p2p_dev;
+#endif /* CONFIG_P2P */
 
 	struct wpa_config *conf;
 	int countermeasures;
@@ -823,6 +828,7 @@ struct wpa_supplicant {
 	u8 last_gas_dialog_token, prev_gas_dialog_token;
 
 	unsigned int no_keep_alive:1;
+	unsigned int ext_mgmt_frame_handling:1;
 
 #ifdef CONFIG_WNM
 	u8 wnm_dialog_token;

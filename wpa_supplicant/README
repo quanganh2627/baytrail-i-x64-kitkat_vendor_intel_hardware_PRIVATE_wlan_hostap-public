@@ -413,7 +413,7 @@ usage:
         [-G<group>] \
         -i<ifname> -c<config file> [-C<ctrl>] [-D<driver>] [-p<driver_param>] \
         [-b<br_ifname> [-N -i<ifname> -c<conf> [-C<ctrl>] [-D<driver>] \
-        [-p<driver_param>] [-b<br_ifname>] [-m<p2p Device config file>] ...
+        [-p<driver_param>] [-b<br_ifname>] [-m<P2P Device config file>] ...
 
 options:
   -b = optional bridge interface name

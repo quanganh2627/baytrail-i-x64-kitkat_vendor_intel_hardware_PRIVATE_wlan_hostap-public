@@ -993,30 +993,33 @@ struct wpa_bss * wpa_supplicant_pick_network(struct wpa_supplicant *wpa_s,
 {
 	struct wpa_bss *selected = NULL;
 	int prio;
+	struct wpa_ssid *next_ssid = NULL;
 
 	if (wpa_s->last_scan_res == NULL ||
 	    wpa_s->last_scan_res_used == 0)
 		return NULL; /* no scan results from last update */
 
+	if (wpa_s->next_ssid) {
+		struct wpa_ssid *ssid;
+
+		/* check that next_ssid is still valid */
+		for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next) {
+			if (ssid == wpa_s->next_ssid)
+				break;
+		}
+		next_ssid = ssid;
+		wpa_s->next_ssid = NULL;
+	}
+
 	while (selected == NULL) {
-		if (wpa_s->next_ssid) {
-			struct wpa_ssid *ssid;
-
-			/* check that next_ssid is still valid */
-			for (ssid = wpa_s->conf->ssid; ssid; ssid = ssid->next)
-				if (ssid == wpa_s->next_ssid)
-					break;
-			wpa_s->next_ssid = NULL;
-
-			if (ssid) {
+		for (prio = 0; prio < wpa_s->conf->num_prio; prio++) {
+			if (next_ssid && next_ssid->priority ==
+			    wpa_s->conf->pssid[prio]->priority) {
 				selected = wpa_supplicant_select_bss(
-					wpa_s, ssid, selected_ssid, 1);
+					wpa_s, next_ssid, selected_ssid, 1);
 				if (selected)
 					break;
 			}
-		}
-
-		for (prio = 0; prio < wpa_s->conf->num_prio; prio++) {
 			selected = wpa_supplicant_select_bss(
 				wpa_s, wpa_s->conf->pssid[prio],
 				selected_ssid, 0);
@@ -3156,6 +3159,23 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 	case EVENT_RX_MGMT: {
 		u16 fc, stype;
 		const struct ieee80211_mgmt *mgmt;
+
+#ifdef CONFIG_TESTING_OPTIONS
+		if (wpa_s->ext_mgmt_frame_handling) {
+			struct rx_mgmt *rx = &data->rx_mgmt;
+			size_t hex_len = 2 * rx->frame_len + 1;
+			char *hex = os_malloc(hex_len);
+			if (hex) {
+				wpa_snprintf_hex(hex, hex_len,
+						 rx->frame, rx->frame_len);
+				wpa_msg(wpa_s, MSG_INFO, "MGMT-RX freq=%d datarate=%u ssi_signal=%d %s",
+					rx->freq, rx->datarate, rx->ssi_signal,
+					hex);
+				os_free(hex);
+			}
+			break;
+		}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 		mgmt = (const struct ieee80211_mgmt *)
 			data->rx_mgmt.frame;

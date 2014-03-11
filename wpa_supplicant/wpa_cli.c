@@ -2919,7 +2919,7 @@ static struct wpa_cli_cmd wpa_cli_commands[] = {
 	{ "radio_work", wpa_cli_cmd_radio_work, NULL, cli_cmd_flag_none,
 	  "= radio_work <show/add/done>" },
 	{ "vendor", wpa_cli_cmd_vendor, NULL, cli_cmd_flag_none,
-	  "<vendor id> <command id>[ <hex formatted command argument>] = Send vendor command"
+	  "<vendor id> <command id> [<hex formatted command argument>] = Send vendor command"
 	},
 	{ NULL, NULL, NULL, cli_cmd_flag_none, NULL }
 };

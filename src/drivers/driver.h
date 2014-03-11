@@ -453,6 +453,11 @@ struct wpa_driver_associate_params {
 	int bg_scan_period;
 
 	/**
+	 * beacon_int - Beacon interval for IBSS or 0 to use driver default
+	 */
+	int beacon_int;
+
+	/**
 	 * wpa_ie - WPA information element for (Re)Association Request
 	 * WPA information element to be included in (Re)Association
 	 * Request (including information element id and length). Use
@@ -920,7 +925,7 @@ struct wpa_driver_capa {
 #define WPA_DRIVER_FLAGS_P2P_DEDICATED_INTERFACE	0x00000400
 /* This interface is P2P capable (P2P GO or P2P Client) */
 #define WPA_DRIVER_FLAGS_P2P_CAPABLE	0x00000800
-/* Driver supports stations and keys removal when stopping an AP */
+/* Driver supports station and key removal when stopping an AP */
 #define WPA_DRIVER_FLAGS_AP_TEARDOWN_SUPPORT		0x00001000
 /*
  * Driver uses the initial interface for P2P management interface and non-P2P
@@ -2529,17 +2534,22 @@ struct wpa_driver_ops {
 	/**
 	 * vendor_cmd - Execute vendor specific command
 	 * @priv: Private driver interface data
-	 * @vendor_id: vendor id
-	 * @subcmd: vendor command id
-	 * @data: vendor command parameters(%NULL if no parameters)
-	 * @data_len: data length
-	 * @buf: return buffer(%NULL to ignore reply)
+	 * @vendor_id: Vendor id
+	 * @subcmd: Vendor command id
+	 * @data: Vendor command parameters (%NULL if no parameters)
+	 * @data_len: Data length
+	 * @buf: Return buffer (%NULL to ignore reply)
 	 * Returns: 0 on success, negative (<0) on failure
 	 *
 	 * This function handles vendor specific commands that are passed to
-	 * the driver/device. The command is indentified by vendor id and
+	 * the driver/device. The command is identified by vendor id and
 	 * command id. Parameters can be passed as argument to the command
-	 * in the data buffer. Reply(if any) will be filled in the supplied buf
+	 * in the data buffer. Reply (if any) will be filled in the supplied
+	 * return buffer.
+	 *
+	 * The exact driver behavior is driver interface and vendor specific. As
+	 * an example, this will be converted to a vendor specific cfg80211
+	 * command in case of the nl80211 driver interface.
 	 */
 	int (*vendor_cmd)(void *priv, unsigned int vendor_id,
 			  unsigned int subcmd, const u8 *data, size_t data_len,
