@@ -3134,6 +3134,10 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 				  data->ch_switch.ch_width,
 				  data->ch_switch.cf1,
 				  data->ch_switch.cf2);
+
+#ifdef CONFIG_P2P
+		wpas_p2p_update_channel_list(wpa_s);
+#endif
 		break;
 #endif /* CONFIG_AP */
 	case EVENT_RX_MGMT: {

@@ -8156,6 +8156,12 @@ static void wpas_p2p_move_go(void *eloop_ctx, void *timeout_ctx)
 	if (!wpa_s->ap_iface || !wpa_s->current_ssid)
 		return;
 
+	/* don't move go in the middle of csa */
+	if (wpa_s->ap_iface->csa_in_progress) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: CSA is in progress - not moving GO");
+		return;
+	}
 	/*
 	 * first try a channel switch flow, if it is not supported or fails,
 	 * perform take down the GO and bring it up again
@@ -8227,6 +8233,16 @@ static void wpas_p2p_consider_moving_one_go(struct wpa_supplicant *wpa_s,
 	if (invalid_freq == 0 && (policy_move == 0 || flags != 0)) {
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"Not initiating a GO frequency change");
+		return;
+	}
+
+	/*
+	 * Don't consider moving GO if it is in the middle  of a CSA. When the
+	 * CSA is finished this flow should be retriggered.
+	 */
+	if (wpa_s->ap_iface->csa_in_progress) {
+		wpa_dbg(wpa_s, MSG_DEBUG,
+			"Not initiating a GO frequency change - CSA is in progress");
 		return;
 	}
 
