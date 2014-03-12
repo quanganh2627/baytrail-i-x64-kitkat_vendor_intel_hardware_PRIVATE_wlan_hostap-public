@@ -2213,6 +2213,8 @@ static int hostapd_change_config_freq(struct hostapd_data *hapd,
 		channel = hostapd_hw_get_channel(hapd, params->freq);
 		if (!channel)
 			return -1;
+
+		params->channel = channel;
 	} else {
 		channel = params->channel;
 	}

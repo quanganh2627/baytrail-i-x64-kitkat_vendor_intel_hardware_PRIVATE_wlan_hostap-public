@@ -263,19 +263,13 @@ static u8 * hostapd_eid_wpa(struct hostapd_data *hapd, u8 *eid, size_t len)
 
 static u8 * hostapd_eid_csa(struct hostapd_data *hapd, u8 *eid)
 {
-	u8 chan;
-
-	if (!hapd->iface->cs_freq_params.freq)
-		return eid;
-
-	if (ieee80211_freq_to_chan(hapd->iface->cs_freq_params.freq, &chan) ==
-	    NUM_HOSTAPD_MODES)
+	if (!hapd->iface->cs_freq_params.channel)
 		return eid;
 
 	*eid++ = WLAN_EID_CHANNEL_SWITCH;
 	*eid++ = 3;
 	*eid++ = hapd->iface->cs_block_tx;
-	*eid++ = chan;
+	*eid++ = hapd->iface->cs_freq_params.channel;
 	*eid++ = hapd->iface->cs_count;
 
 	return eid;
