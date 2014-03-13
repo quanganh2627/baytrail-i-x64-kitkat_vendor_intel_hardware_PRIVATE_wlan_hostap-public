@@ -3412,7 +3412,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 
 #ifdef CONFIG_P2P
 		wpa_s->conf_p2p_dev = os_rel2abs_path(iface->conf_p2p_dev);
-		wpa_config_read(wpa_s->conf_p2p_dev, wpa_s->conf);
+		if (iface->p2p_mgmt)
+			wpa_config_read(wpa_s->conf_p2p_dev, wpa_s->conf);
 #endif /* CONFIG_P2P */
 
 		/*
