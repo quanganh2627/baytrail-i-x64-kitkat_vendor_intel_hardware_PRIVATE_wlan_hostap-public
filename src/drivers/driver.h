@@ -1020,6 +1020,9 @@ struct wpa_driver_capa {
 	 */
 	const u8 *extended_capa, *extended_capa_mask;
 	unsigned int extended_capa_len;
+
+	/* maximum number of supported csa counters */
+	u16 max_csa_counters;
 };
 
 
@@ -1270,8 +1273,8 @@ struct csa_settings {
 	struct beacon_data beacon_csa;
 	struct beacon_data beacon_after;
 
-	u16 counter_offset_beacon;
-	u16 counter_offset_presp;
+	u16 counter_offset_beacon[2];
+	u16 counter_offset_presp[2];
 };
 
 /**

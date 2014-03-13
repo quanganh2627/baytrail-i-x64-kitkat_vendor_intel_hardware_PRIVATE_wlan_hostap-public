@@ -2302,8 +2302,8 @@ static int hostapd_fill_csa_settings(struct hostapd_iface *iface,
 		return ret;
 	}
 
-	settings->counter_offset_beacon = iface->cs_c_off_beacon;
-	settings->counter_offset_presp = iface->cs_c_off_proberesp;
+	settings->counter_offset_beacon[0] = iface->cs_c_off_beacon;
+	settings->counter_offset_presp[0] = iface->cs_c_off_proberesp;
 
 	return 0;
 }
