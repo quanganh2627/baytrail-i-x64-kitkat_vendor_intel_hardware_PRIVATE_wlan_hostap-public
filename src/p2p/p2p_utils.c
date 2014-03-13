@@ -11,6 +11,8 @@
 #include "common.h"
 #include "p2p_i.h"
 #include "wps/wps_defs.h"
+#include "common/defs.h"
+#include "common/ieee802_11_common.h"
 
 /**
  * p2p_random - Generate random string for SSID and passphrase
@@ -51,55 +53,12 @@ int p2p_random(char *buf, size_t len)
  * @op_class: Operating class
  * @channel: Channel number
  * Returns: Frequency in MHz or -1 if the specified channel is unknown
- */
+  */
 int p2p_channel_to_freq(int op_class, int channel)
 {
-	/* Table E-4 in IEEE Std 802.11-2012 - Global operating classes */
-	/* TODO: more operating classes */
-	switch (op_class) {
-	case 81:
-		/* channels 1..13 */
-		if (channel < 1 || channel > 13)
-			return -1;
-		return 2407 + 5 * channel;
-	case 82:
-		/* channel 14 */
-		if (channel != 14)
-			return -1;
-		return 2414 + 5 * channel;
-	case 83: /* channels 1..9; 40 MHz */
-	case 84: /* channels 5..13; 40 MHz */
-		if (channel < 1 || channel > 13)
-			return -1;
-		return 2407 + 5 * channel;
-	case 115: /* channels 36,40,44,48; indoor only */
-	case 118: /* channels 52,56,60,64; dfs */
-		if (channel < 36 || channel > 64)
-			return -1;
-		return 5000 + 5 * channel;
-	case 124: /* channels 149,153,157,161 */
-	case 125: /* channels 149,153,157,161,165,169 */
-		if (channel < 149 || channel > 161)
-			return -1;
-		return 5000 + 5 * channel;
-	case 116: /* channels 36,44; 40 MHz; indoor only */
-	case 117: /* channels 40,48; 40 MHz; indoor only */
-	case 119: /* channels 52,60; 40 MHz; dfs */
-	case 120: /* channels 56,64; 40 MHz; dfs */
-		if (channel < 36 || channel > 64)
-			return -1;
-		return 5000 + 5 * channel;
-	case 126: /* channels 149,157; 40 MHz */
-	case 127: /* channels 153,161; 40 MHz */
-		if (channel < 149 || channel > 161)
-			return -1;
-		return 5000 + 5 * channel;
-	case 128: /* center freqs 42, 58, 106, 122, 138, 155; 80 MHz */
-		if (channel < 36 || channel > 161)
-			return -1;
-		return 5000 + 5 * channel;
-	}
-	return -1;
+	/* TODO: this function may be completely removed */
+
+	return ieee80211_channel_to_freq(channel, op_class);
 }
 
 
@@ -111,41 +70,13 @@ int p2p_channel_to_freq(int op_class, int channel)
  */
 int p2p_freq_to_channel(unsigned int freq, u8 *op_class, u8 *channel)
 {
-	/* TODO: more operating classes */
-	if (freq >= 2412 && freq <= 2472) {
-		if ((freq - 2407) % 5)
-			return -1;
+	/* TODO: this function may be completely removed */
 
-		*op_class = 81; /* 2.407 GHz, channels 1..13 */
-		*channel = (freq - 2407) / 5;
-		return 0;
-	}
+	if (ieee80211_freq_to_channel_ext(freq, 0, 0, op_class, channel) ==
+	    NUM_HOSTAPD_MODES)
+		return -1;
 
-	if (freq == 2484) {
-		*op_class = 82; /* channel 14 */
-		*channel = 14;
-		return 0;
-	}
-
-	if (freq >= 5180 && freq <= 5240) {
-		if ((freq - 5000) % 5)
-			return -1;
-
-		*op_class = 115; /* 5 GHz, channels 36..48 */
-		*channel = (freq - 5000) / 5;
-		return 0;
-	}
-
-	if (freq >= 5745 && freq <= 5805) {
-		if ((freq - 5000) % 5)
-			return -1;
-
-		*op_class = 124; /* 5 GHz, channels 149..161 */
-		*channel = (freq - 5000) / 5;
-		return 0;
-	}
-
-	return -1;
+	return 0;
 }
 
 
