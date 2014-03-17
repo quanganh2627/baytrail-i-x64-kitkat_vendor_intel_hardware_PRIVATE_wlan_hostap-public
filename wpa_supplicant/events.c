@@ -2912,6 +2912,9 @@ static void wpa_supplicant_event_tcm_changed(struct wpa_supplicant *wpa_s,
 	tcm_data->vi_vo_present = !!data->tcm_changed.vi_vo_present;
 
 	wpas_handle_tcm_changed(wpa_s);
+
+	/* Store current TCM data as a reference for next TCM event to come */
+	wpa_s->radio->prev_tcm_data = *tcm_data;
 }
 
 

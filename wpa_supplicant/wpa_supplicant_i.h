@@ -308,7 +308,7 @@ struct wpa_radio {
 		 * radio.
 		 */
 		enum traffic_load traffic_load;
-	} tcm_data;
+	} tcm_data, prev_tcm_data;
 };
 
 /**
@@ -1030,5 +1030,22 @@ int wpas_freq_flags(struct wpa_supplicant *wpa_s, int freq, unsigned int flags);
 int wpas_freq_priority_value(struct wpa_supplicant *wpa_s, int freq);
 int wpas_freq_priority_list_set(struct wpa_supplicant *wpa_s,
 				struct dl_list *ranges);
+
+static inline int wpas_tcm_vi_vo_changed(struct wpa_supplicant *wpa_s)
+{
+	return wpa_s->radio->tcm_data.vi_vo_present !=
+		wpa_s->radio->prev_tcm_data.vi_vo_present;
+}
+
+static inline int wpas_tcm_high_traffic_changed(struct wpa_supplicant *wpa_s)
+{
+	struct tcm_data *tcm_data = &wpa_s->radio->tcm_data;
+	struct tcm_data *prev_tcm_data = &wpa_s->radio->prev_tcm_data;
+
+	return (tcm_data->traffic_load == TRAFFIC_LOAD_HIGH &&
+		prev_tcm_data->traffic_load != TRAFFIC_LOAD_HIGH) ||
+		(tcm_data->traffic_load != TRAFFIC_LOAD_HIGH &&
+		 prev_tcm_data->traffic_load == TRAFFIC_LOAD_HIGH);
+}
 
 #endif /* WPA_SUPPLICANT_I_H */
