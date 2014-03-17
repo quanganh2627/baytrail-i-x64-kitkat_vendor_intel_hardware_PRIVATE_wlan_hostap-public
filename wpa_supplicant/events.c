@@ -2758,18 +2758,7 @@ static void wpa_supplicant_update_channel_list(struct wpa_supplicant *wpa_s)
 		 */
 		wpa_bss_flush(ifs);
 
-		if (ifs->pno) {
-			wpa_supplicant_stop_pno(ifs);
-			wpa_supplicant_start_pno(ifs);
-		} else if (ifs->sched_scanning && !ifs->pno_sched_pending) {
-			/*
-			 * simulate a timeout to restart it. reset the state
-			 * to start from the beginning.
-			 */
-			ifs->sched_scan_timed_out = 1;
-			wpa_s->prev_sched_ssid = NULL;
-			wpa_supplicant_cancel_sched_scan(ifs);
-		}
+		wpas_scan_restart_sched_scan(ifs);
 	}
 
 #ifdef CONFIG_P2P

@@ -1966,3 +1966,23 @@ int wpa_supplicant_stop_pno(struct wpa_supplicant *wpa_s)
 
 	return ret;
 }
+
+void wpas_scan_restart_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	if (!wpa_s->sched_scanning || wpa_s->pno_sched_pending)
+		return;
+
+	if (wpa_s->pno) {
+		wpa_supplicant_stop_pno(wpa_s);
+		wpa_supplicant_start_pno(wpa_s);
+	} else {
+		/*
+		 * simulate a timeout to restart it. reset the state
+		 * to start from the beginning.
+		 */
+		wpa_s->sched_scan_timed_out = 1;
+		wpa_s->prev_sched_ssid = NULL;
+		wpa_supplicant_cancel_sched_scan(wpa_s);
+	}
+}
+
