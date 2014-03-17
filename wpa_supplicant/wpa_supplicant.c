@@ -4804,11 +4804,22 @@ void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_supplicant *ifs;
 	struct tcm_data *tcm_data = &wpa_s->radio->tcm_data;
+	int restart_sched = 0;
+
+	/*
+	 * Restart scheduled scan if VO/VI or high traffic were detected or
+	 * vanished. This will trigger some drivers to adjust scheduled scan
+	 * parameters that depend on traffic conditions.
+	 */
+	restart_sched = !!(wpas_tcm_vi_vo_changed(wpa_s) ||
+			   wpas_tcm_high_traffic_changed(wpa_s));
 
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
 		/* Notify station interfaces about the new traffic conditions */
 		bgscan_notify_tcm_changed(ifs, tcm_data->traffic_load,
 					  tcm_data->vi_vo_present);
+		if (restart_sched)
+			wpas_scan_restart_sched_scan(ifs);
 	}
 }
