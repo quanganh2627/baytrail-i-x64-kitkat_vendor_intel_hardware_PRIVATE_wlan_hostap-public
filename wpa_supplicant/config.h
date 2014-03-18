@@ -732,12 +732,17 @@ struct wpa_config {
 	 * frequency list of the local device and the peer device.
 	 *
 	 * @P2P_GO_FREQ_MOVE_STAY: prefer to stay on the current frequency.
+	 *
+	 * @P2P_GO_FREQ_MOVE_SCM_ECSA: same as
+	 * P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS but a transition is possible only
+	 * if all peers advertise eCSA support.
 	 */
 	enum {
 		P2P_GO_FREQ_MOVE_SCM = 0,
 		P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS = 1,
 		P2P_GO_FREQ_MOVE_STAY = 2,
-		P2P_GO_FREQ_MOVE_MAX = P2P_GO_FREQ_MOVE_STAY,
+		P2P_GO_FREQ_MOVE_SCM_ECSA = 3,
+		P2P_GO_FREQ_MOVE_MAX = P2P_GO_FREQ_MOVE_SCM_ECSA,
 
 	} p2p_go_freq_change_policy;
 

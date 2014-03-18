@@ -2952,6 +2952,29 @@ static int wpas_p2p_go_is_peer_freq(struct wpa_supplicant *wpa_s, int freq)
 }
 
 
+static int wpas_sta_check_ecsa(struct hostapd_data *hapd,
+			       struct sta_info *sta, void *ctx)
+{
+	int *ecsa_support = ctx;
+
+	*ecsa_support &= sta->ecsa_supported;
+
+	return 0;
+}
+
+/*
+ * Check if all the peers support eCSA
+ */
+static int wpas_p2p_go_peers_support_ecsa(struct wpa_supplicant *wpa_s)
+{
+	int ecsa_support = 1;
+
+	ap_for_each_sta(wpa_s->ap_iface->bss[0], wpas_sta_check_ecsa,
+			&ecsa_support);
+
+	return ecsa_support;
+}
+
 static int wpas_freq_included(struct wpa_supplicant *wpa_s,
 			      const struct p2p_channels *channels,
 			      unsigned int freq)
@@ -8214,6 +8237,12 @@ static void wpas_p2p_consider_moving_one_go(struct wpa_supplicant *wpa_s,
 		} else if ((wpa_s->conf->p2p_go_freq_change_policy ==
 			    P2P_GO_FREQ_MOVE_SCM_PEER_SUPPORTS) &&
 			   wpas_p2p_go_is_peer_freq(wpa_s, freqs[i].freq)) {
+			policy_move = 1;
+		} else if ((wpa_s->conf->p2p_go_freq_change_policy ==
+			    P2P_GO_FREQ_MOVE_SCM_ECSA) &&
+			   wpa_s->csa_supported &&
+			   wpas_p2p_go_is_peer_freq(wpa_s, freqs[i].freq) &&
+			   wpas_p2p_go_peers_support_ecsa(wpa_s)) {
 			policy_move = 1;
 		}
 	}

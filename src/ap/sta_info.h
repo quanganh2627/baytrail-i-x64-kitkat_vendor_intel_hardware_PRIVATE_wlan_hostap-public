@@ -59,6 +59,7 @@ struct sta_info {
 	unsigned int qos_map_enabled:1;
 	unsigned int remediation:1;
 	unsigned int hs20_deauth_requested:1;
+	unsigned int ecsa_supported:1;
 
 	u16 auth_alg;
 	u8 previous_ap[6];
