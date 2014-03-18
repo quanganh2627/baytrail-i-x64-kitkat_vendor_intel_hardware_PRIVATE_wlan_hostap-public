@@ -746,7 +746,7 @@ struct wpa_config {
 
 	} p2p_go_freq_change_policy;
 
-#define DEFAULT_P2P_GO_FREQ_MOVE P2P_GO_FREQ_MOVE_STAY
+#define DEFAULT_P2P_GO_FREQ_MOVE P2P_GO_FREQ_MOVE_SCM_ECSA
 
 	/**
 	 * bss_max_count - Maximum number of BSS entries to keep in memory
