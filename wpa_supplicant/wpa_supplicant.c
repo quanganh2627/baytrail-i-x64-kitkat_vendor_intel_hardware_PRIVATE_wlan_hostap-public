@@ -1414,6 +1414,16 @@ void wpa_supplicant_associate(struct wpa_supplicant *wpa_s,
 
 	if ((wpa_s->drv_flags & WPA_DRIVER_FLAGS_SME) &&
 	    ssid->mode == IEEE80211_MODE_INFRA) {
+		if (radio_work_pending(wpa_s, "scan")) {
+			/*
+			 * Starting a connection flow. Remove any scan work that
+			 * might delay the connection.
+			 */
+			wpa_dbg(wpa_s, MSG_DEBUG,
+				"Remove previous pending scan work");
+			radio_remove_works(wpa_s, "scan", 0);
+		}
+
 		sme_authenticate(wpa_s, bss, ssid);
 		return;
 	}
