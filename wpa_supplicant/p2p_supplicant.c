@@ -562,6 +562,10 @@ static int wpas_p2p_group_delete(struct wpa_supplicant *wpa_s,
 	os_free(wpa_s->go_params);
 	wpa_s->go_params = NULL;
 
+	os_free(wpa_s->p2p_group_common_freqs);
+	wpa_s->p2p_group_common_freqs = NULL;
+	wpa_s->p2p_group_common_freqs_num = 0;
+
 	wpa_s->waiting_presence_resp = 0;
 
 	wpa_printf(MSG_DEBUG, "P2P: Remove temporary group network");
@@ -1308,6 +1312,23 @@ static void p2p_go_configured(void *ctx, void *data)
 	} else if (wpa_s->p2p_pin[0])
 		wpa_supplicant_ap_wps_pin(wpa_s, params->peer_interface_addr,
 					  wpa_s->p2p_pin, NULL, 0, 0);
+
+	/* save the group common freqs */
+	wpa_s->p2p_group_common_freqs =
+		os_zalloc(P2P_MAX_CHANNELS * sizeof(int));
+	wpa_s->p2p_group_common_freqs_num = 0;
+
+	if (wpa_s->p2p_group_common_freqs) {
+		unsigned int i;
+		for (i = 0; i < P2P_MAX_CHANNELS; i++) {
+			if (!wpa_s->go_params->freq_list[i])
+				break;
+			wpa_s->p2p_group_common_freqs[i] =
+				wpa_s->go_params->freq_list[i];
+		}
+		wpa_s->p2p_group_common_freqs_num = i;
+	}
+
 	os_free(wpa_s->go_params);
 	wpa_s->go_params = NULL;
 }
@@ -2935,17 +2956,13 @@ static void wpas_prov_disc_fail(void *ctx, const u8 *peer,
 static int wpas_p2p_go_is_peer_freq(struct wpa_supplicant *wpa_s, int freq)
 {
 	unsigned int i;
-	int *freq_list;
 
 	/* assume no restrictions */
-	if (!wpa_s->go_params || !wpa_s->go_params->freq_list[0])
+	if (!wpa_s->p2p_group_common_freqs)
 		return 1;
 
-	freq_list = wpa_s->go_params->freq_list;
-	for (i = 0; i < P2P_MAX_CHANNELS; i++) {
-		if (freq_list[i] == 0)
-			return 0;
-		if (freq_list[i] == freq)
+	for (i = 0; i < wpa_s->p2p_group_common_freqs_num; i++) {
+		if (wpa_s->p2p_group_common_freqs[i] == freq)
 			return 1;
 	}
 	return 0;
@@ -2980,7 +2997,7 @@ static int wpas_freq_included(struct wpa_supplicant *wpa_s,
 			      unsigned int freq)
 {
 	if ((channels == NULL || p2p_channels_includes_freq(channels, freq)) &&
-	    (wpa_s->go_params == NULL || wpas_p2p_go_is_peer_freq(wpa_s, freq)))
+	    wpas_p2p_go_is_peer_freq(wpa_s, freq))
 		return 1;
 	return 0;
 }
@@ -4164,6 +4181,10 @@ void wpas_p2p_deinit(struct wpa_supplicant *wpa_s)
 	wpabuf_free(wpa_s->p2p_oob_dev_pw);
 	wpa_s->p2p_oob_dev_pw = NULL;
 
+	os_free(wpa_s->p2p_group_common_freqs);
+	wpa_s->p2p_group_common_freqs = NULL;
+	wpa_s->p2p_group_common_freqs_num = 0;
+
 	/* TODO: remove group interface from the driver if this wpa_s instance
 	 * is on top of a P2P group interface */
 }
@@ -5241,7 +5262,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 	params->ht40 = ht40;
 	params->vht = vht;
 
-	if (wpa_s->go_params)
+	if (wpa_s->p2p_group_common_freqs)
 		wpa_printf(MSG_DEBUG, "P2P: %s called for an active GO",
 			   __func__);
 
@@ -5383,20 +5404,16 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 		goto success;
 	}
 
-	/* Try using one of the group common freqs */
-	if (wpa_s->go_params && wpa_s->go_params->freq_list[0]) {
-		for (i = 0; i < P2P_MAX_CHANNELS; i++) {
-			cand = wpa_s->go_params->freq_list[i];
-			if (!cand)
-				break;
+	/* try using one of the group common freqs */
+	for (i = 0; i < wpa_s->p2p_group_common_freqs_num; i++) {
+		cand = wpa_s->p2p_group_common_freqs[i];
 
-		   if (wpas_p2p_supported_freq_go(wpa_s, channels, cand)) {
-				params->freq = cand;
-				wpa_printf(MSG_DEBUG,
-					   "P2P: use a freq %d MHz common with the peer",
-					   params->freq);
-				goto success;
-			}
+		if (wpas_p2p_supported_freq_go(wpa_s, channels, cand)) {
+			params->freq = cand;
+			wpa_printf(MSG_DEBUG,
+				   "P2P: use a freq %d MHz common with the peer",
+				   params->freq);
+			goto success;
 		}
 	}
 
