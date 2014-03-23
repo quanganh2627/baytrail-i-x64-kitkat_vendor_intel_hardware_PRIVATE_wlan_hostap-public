@@ -4675,10 +4675,10 @@ int get_shared_radio_freqs_data(struct wpa_supplicant *wpa_s,
 		if (ifs->current_ssid->mode == WPAS_MODE_INFRA) {
 			if (ifs->p2p_group_interface ==
 			    P2P_GROUP_INTERFACE_CLIENT)
-				freqs_data[0].flags |=
+				freqs_data[i].flags |=
 					WPA_FREQ_USED_BY_P2P_CLIENT;
 			else
-				freqs_data[0].flags |=
+				freqs_data[i].flags |=
 					WPA_FREQ_USED_BY_BSS;
 		}
 	}
