@@ -38,10 +38,8 @@
 #include "radiotap_iter.h"
 #include "rfkill.h"
 #include "driver.h"
-
-#ifdef ANDROID
 #include "iwl_vendor_cmd_copy.h"
-#endif
+
 
 #ifndef SO_WIFI_STATUS
 # if defined(__sparc__)
@@ -2825,6 +2823,64 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static void intel_nl80211_tcm_event(struct wpa_driver_nl80211_data *drv,
+				    struct nlattr *data)
+{
+	struct nlattr *tcm[MAX_IWL_MVM_VENDOR_ATTR + 1];
+	union wpa_event_data event;
+	enum iwl_mvm_vendor_load traffic_load;
+	static struct nla_policy tcm_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
+		[IWL_MVM_VENDOR_ATTR_LOW_LATENCY] = { .type = NLA_FLAG },
+		[IWL_MVM_VENDOR_ATTR_VIF_ADDR] = { .type = NLA_UNSPEC },
+		[IWL_MVM_VENDOR_ATTR_VIF_LL] = { .type = NLA_U8 },
+		[IWL_MVM_VENDOR_ATTR_LL] = { .type = NLA_U8 },
+		[IWL_MVM_VENDOR_ATTR_VIF_LOAD] = { .type = NLA_U8 },
+		[IWL_MVM_VENDOR_ATTR_LOAD] = { .type = NLA_U8 },
+	};
+
+	if (nla_parse_nested(tcm, MAX_IWL_MVM_VENDOR_ATTR, data, tcm_policy) ||
+	    !tcm[IWL_MVM_VENDOR_ATTR_LL] || !tcm[IWL_MVM_VENDOR_ATTR_LOAD]) {
+		wpa_printf(MSG_DEBUG, "nl80211: Ignore invalid TCM data");
+		return;
+	}
+
+	event.tcm_changed.vi_vo_present =
+		nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_LL]);
+	traffic_load = nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_LOAD]);
+	switch (traffic_load) {
+	case IWL_MVM_VENDOR_LOAD_LOW:
+		event.tcm_changed.traffic_load = TRAFFIC_LOAD_LOW;
+		break;
+	case IWL_MVM_VENDOR_LOAD_MEDIUM:
+		event.tcm_changed.traffic_load = TRAFFIC_LOAD_MEDIUM;
+		break;
+	case IWL_MVM_VENDOR_LOAD_HIGH:
+		event.tcm_changed.traffic_load = TRAFFIC_LOAD_HIGH;
+		break;
+	default:
+		wpa_printf(MSG_DEBUG, "nl80211: Ignore invalid TCM data");
+		return;
+	}
+	wpa_supplicant_event(drv->ctx, EVENT_TCM_CHANGED, &event);
+}
+
+
+static void nl80211_vendor_event_intel(struct wpa_driver_nl80211_data *drv,
+				       u32 subcmd, struct nlattr *data)
+{
+	switch (subcmd) {
+	case IWL_MVM_VENDOR_CMD_TCM_EVENT:
+		intel_nl80211_tcm_event(drv, data);
+		break;
+	default:
+		wpa_printf(MSG_DEBUG,
+			   "nl80211: Ignore unsupported INTEL vendor event %u",
+			   subcmd);
+		break;
+	}
+}
+
+
 static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 				 struct nlattr **tb)
 {
@@ -2862,6 +2918,10 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	switch (vendor_id) {
 	case OUI_QCA:
 		nl80211_vendor_event_qca(drv, subcmd, data, len);
+		break;
+	case INTEL_OUI:
+		nl80211_vendor_event_intel(drv, subcmd,
+					   tb[NL80211_ATTR_VENDOR_DATA]);
 		break;
 	default:
 		wpa_printf(MSG_DEBUG, "nl80211: Ignore unsupported vendor event");
