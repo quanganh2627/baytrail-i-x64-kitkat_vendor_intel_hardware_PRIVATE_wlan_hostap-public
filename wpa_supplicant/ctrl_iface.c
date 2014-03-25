@@ -218,7 +218,7 @@ int wpas_ctrl_iface_freq_priority_get(struct wpa_supplicant *wpa_s, char *reply,
 			 list) {
 		s = freq_range_list_str(&p->ranges);
 		ret = os_snprintf(reply + written, reply_size - written,
-				  " %d{%s}", p->value, s);
+				  " %d{%s}", p->value, s ? s : "");
 		os_free(s);
 
 		if (ret > 0)
