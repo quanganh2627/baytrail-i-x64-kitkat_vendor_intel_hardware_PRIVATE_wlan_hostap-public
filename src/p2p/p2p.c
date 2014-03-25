@@ -1246,16 +1246,14 @@ static void p2p_prepare_channel_best_no_pref(struct p2p_data *p2p)
 			p2p_dbg(p2p,
 				"Select random social channel %d as operating channel",
 				op_channel);
-			goto out;
+			p2p->op_reg_class = op_class;
+			p2p->op_channel = op_channel;
+			return;
 		}
 	}
 
 	p2p_err(p2p,
 		"Non of the social channels can be used as an operating channel");
-
-out:
-	p2p->op_reg_class = op_class;
-	p2p->op_channel = op_channel;
 }
 
 
