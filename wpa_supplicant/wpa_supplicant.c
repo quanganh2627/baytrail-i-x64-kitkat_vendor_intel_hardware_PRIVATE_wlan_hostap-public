@@ -3881,13 +3881,11 @@ int wpas_freq_priority_value(struct wpa_supplicant *wpa_s, int freq)
 int wpas_freq_priority_list_set(struct wpa_supplicant *wpa_s,
 				struct dl_list *head)
 {
-	struct wpa_global *global = wpa_s->global;
-
-	if (!wpa_s || !global)
+	if (!wpa_s || !wpa_s->global)
 		return -1;
 
-	freq_range_value_list_flush(&global->freq_priority);
-	dl_list_add(head, &global->freq_priority);
+	freq_range_value_list_flush(&wpa_s->global->freq_priority);
+	dl_list_add(head, &wpa_s->global->freq_priority);
 	dl_list_del(head);
 
 #ifdef CONFIG_P2P
