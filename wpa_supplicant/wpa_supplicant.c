@@ -633,7 +633,7 @@ void wpa_supplicant_miracast(struct wpa_supplicant *wpa_s, int miracast)
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces,
 			 struct wpa_supplicant,
 			 radio_list) {
-		ifs->miracast = !!miracast;
+		wpa_s->miracast = !!miracast;
 		if (miracast)
 			wpa_supplicant_stop_bgscan(ifs);
 		else if (wpa_s->wpa_state == WPA_COMPLETED)
