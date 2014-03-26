@@ -11472,67 +11472,6 @@ static int android_pno_stop(struct i802_bss *bss)
 	return android_priv_cmd(bss, "PNOFORCE 0");
 }
 
-/**
- * wpa_driver_nl80211_set_low_latency - indicate to the driver that it should
- * enter/exit low latency mode for the given interface.
- *
- * Note: this is only a temporary implementation that should be removed once
- * proper support for traffic monitor and low latency monitoring is implemented.
- */
-static int wpa_driver_nl80211_set_low_latency(struct i802_bss *bss, int val)
-{
-	struct wpa_driver_nl80211_data *drv = bss->drv;
-	struct nl_msg *msg;
-	struct nlattr *nested;
-	struct wpa_driver_nl80211_data *driver;
-	int ret = -1;
-	int ifidx = -1;
-
-	dl_list_for_each(driver, &drv->global->interfaces,
-			 struct wpa_driver_nl80211_data, list) {
-		if (driver->nlmode == NL80211_IFTYPE_P2P_GO ||
-		    driver->nlmode == NL80211_IFTYPE_P2P_CLIENT) {
-			ifidx = driver->ifindex;
-			break;
-		}
-	}
-
-	if (ifidx == -1) {
-		wpa_printf(MSG_ERROR, "nl80211: no ifidx to set low latency");
-		return -1;
-	}
-
-	msg = nlmsg_alloc();
-	if (!msg)
-		return -1;
-
-	nl80211_cmd(drv, msg, 0, NL80211_CMD_VENDOR);
-
-	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, ifidx);
-	NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_ID, INTEL_OUI);
-	NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_SUBCMD,
-		    IWL_MVM_VENDOR_CMD_SET_LOW_LATENCY);
-
-	nested = nla_nest_start(msg, NL80211_ATTR_VENDOR_DATA);
-	if (!nested)
-		goto nla_put_failure;
-
-	if (val)
-		NLA_PUT_FLAG(msg, IWL_MVM_VENDOR_ATTR_LOW_LATENCY);
-
-	nla_nest_end(msg, nested);
-
-	ret = send_and_recv_msgs(drv, msg, NULL, NULL);
-	msg = NULL;
-	wpa_printf(MSG_DEBUG,
-		   "nl80211: set low latency to val=%d ret=%d, (%s)",
-		   val, ret, ret ? strerror(-ret) : "SUCCESS");
-
-nla_put_failure:
-	nlmsg_free(msg);
-	return ret;
-}
-
 static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len)
 {
@@ -11572,8 +11511,6 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 		if (!ret && (state != -1))
 			ret = os_snprintf(buf, buf_len, "POWERMODE = %d\n",
 					  state);
-	} else if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0) {
-		ret = wpa_driver_nl80211_set_low_latency(bss, atoi(cmd + 9));
 	} else if (os_strncasecmp(cmd, "COUNTRY ", 8) == 0) {
 		/*
 		 * don't do anything on P2P interface - avoid double "set"
