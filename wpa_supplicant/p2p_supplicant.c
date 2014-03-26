@@ -56,8 +56,8 @@
  * Defines CSA parameters which are used when GO evacuates the no longer valid
  * channel (and if the driver supports channel switch)
  */
-#define P2P_GO_CSA_COUNT 5
-#define P2P_GO_CSA_BLOCK_TX 1
+#define P2P_GO_CSA_COUNT 7
+#define P2P_GO_CSA_BLOCK_TX 0
 
 #ifndef P2P_MAX_CLIENT_IDLE
 /*
