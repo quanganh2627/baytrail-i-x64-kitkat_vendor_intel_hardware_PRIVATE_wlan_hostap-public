@@ -625,22 +625,6 @@ static void wpa_supplicant_stop_bgscan(struct wpa_supplicant *wpa_s)
 
 #endif /* CONFIG_BGSCAN */
 
-void wpa_supplicant_miracast(struct wpa_supplicant *wpa_s, int miracast)
-{
-#ifdef CONFIG_BGSCAN
-	struct wpa_supplicant *ifs;
-
-	dl_list_for_each(ifs, &wpa_s->radio->ifaces,
-			 struct wpa_supplicant,
-			 radio_list) {
-		wpa_s->miracast = !!miracast;
-		if (miracast)
-			wpa_supplicant_stop_bgscan(ifs);
-		else if (wpa_s->wpa_state == WPA_COMPLETED)
-			wpa_supplicant_start_bgscan(ifs);
-	}
-#endif /* CONFIG_BGSCAN */
-}
 
 static void wpa_supplicant_start_autoscan(struct wpa_supplicant *wpa_s)
 {
@@ -728,7 +712,7 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 	wpa_s->wpa_state = state;
 
 #ifdef CONFIG_BGSCAN
-	if (state == WPA_COMPLETED && !wpa_s->miracast)
+	if (state == WPA_COMPLETED)
 		wpa_supplicant_start_bgscan(wpa_s);
 	else if (state < WPA_ASSOCIATED)
 		wpa_supplicant_stop_bgscan(wpa_s);

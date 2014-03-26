@@ -5458,10 +5458,6 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 		ret = wpas_setband(wpa_s, band);
 	} else {
 		ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
-		if (ret == 0) {
-			if (os_strncasecmp(cmd, "MIRACAST ", 9) == 0)
-				wpa_supplicant_miracast(wpa_s, atoi(cmd + 9));
-		}
 	}
 
 	ret = os_snprintf(buf, buflen, "%s\n", ret ? "FAIL" : "OK");
