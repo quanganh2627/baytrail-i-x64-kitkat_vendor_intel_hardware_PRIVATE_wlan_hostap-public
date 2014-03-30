@@ -476,6 +476,15 @@ void hostapd_event_ch_switch(struct hostapd_data *hapd, int freq, int ht,
 		wpa_msg(hapd->msg_ctx, MSG_INFO, AP_CSA_FINISHED "freq=%d",
 			freq);
 	}
+
+#ifdef CONFIG_P2P
+	hapd->disallow_legacy_clients = hapd->p2p &&
+		hostapd_freq_flags(hapd->iface,
+				   hapd->iface->freq,
+				   HOSTAPD_CHAN_INDOOR_ONLY);
+
+	/* TODO: need to deauth legacy clients */
+#endif /* CONFIG_P2P */
 #endif /* NEED_AP_MLME */
 }
 
