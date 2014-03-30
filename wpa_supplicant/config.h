@@ -1058,6 +1058,13 @@ struct wpa_config {
 	 * directory.
 	 */
 	char *osu_dir;
+
+	/**
+	 * wowlan_triggers - Wowlan triggers
+	 *
+	 * If set, these wowlan triggers will be configured
+	 */
+	char *wowlan_triggers;
 };
 
 
