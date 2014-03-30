@@ -1040,3 +1040,37 @@ int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq)
 
 	return 0;
 }
+
+
+/*
+ * hostapd_channel_flags - check if the given flags are set for the given freq
+ * @iface: Pointer to hostapd interface
+ * @freq: the freq to check
+ * @flags: the flags to verify
+ *
+ * The function determines if the given flags are set for the given freq in one
+ * of the supported hw_modes.
+ * Returns 1 if there is a matching channel which is enabled and on which the
+ * give flags are set. Otherwise returns 0.
+ */
+int hostapd_freq_flags(struct hostapd_iface *iface, int freq,
+		       unsigned int flags)
+{
+	struct hostapd_hw_modes *mode;
+	u16 i;
+
+	for (i = 0; i < iface->num_hw_features; i++) {
+		int j;
+
+		mode = &iface->hw_features[i];
+		for (j = 0; j < mode->num_channels; j++) {
+			if (mode->channels[j].flag & HOSTAPD_CHAN_DISABLED ||
+			    mode->channels[j].freq != freq)
+				continue;
+
+			if ((mode->channels[j].flag & flags) == flags)
+				return 1;
+		}
+	}
+	return 0;
+}

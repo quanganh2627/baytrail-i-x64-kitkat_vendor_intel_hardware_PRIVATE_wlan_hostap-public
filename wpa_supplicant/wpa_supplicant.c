@@ -4764,42 +4764,6 @@ int wpas_setband(struct wpa_supplicant *wpa_s, int band)
 	return 0;
 }
 
-/*
- * wpas_channel_flags - check if the given flags are set for the given freq
- * @wpa_s: Pointer to wpa_supplicant data
- * @freq: the freq to check
- * @flags: the flags to verify
- *
- * The function determines if the given flags are set for the given freq in one
- * of the supported hw_modes.
- * Returns 1 if there is a matching channel which is enabled and on which the
- * give flags are set. Otherwise returns 0.
- */
-
-int wpas_freq_flags(struct wpa_supplicant *wpa_s, int freq, unsigned int flags)
-{
-	struct hostapd_hw_modes *mode;
-	u16 i;
-
-	if (wpa_s->hw.modes == NULL)
-		return 0;
-
-	for (i = 0; i < wpa_s->hw.num_modes; i++) {
-		int j;
-
-		mode = &wpa_s->hw.modes[i];
-		for (j = 0; j < mode->num_channels; j++) {
-			if (mode->channels[j].flag & HOSTAPD_CHAN_DISABLED ||
-			    mode->channels[j].freq != freq)
-				continue;
-
-			if ((mode->channels[j].flag & flags) == flags)
-				return 1;
-		}
-	}
-	return 0;
-}
-
 void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_supplicant *ifs;

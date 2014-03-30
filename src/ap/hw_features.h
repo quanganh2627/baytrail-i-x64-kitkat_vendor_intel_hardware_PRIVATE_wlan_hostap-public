@@ -23,6 +23,8 @@ int hostapd_hw_get_channel(struct hostapd_data *hapd, int freq);
 int hostapd_check_ht_capab(struct hostapd_iface *iface);
 int hostapd_prepare_rates(struct hostapd_iface *iface,
 			  struct hostapd_hw_modes *mode);
+int hostapd_freq_flags(struct hostapd_iface *iface, int freq,
+		       unsigned int flags);
 #else /* NEED_AP_MLME */
 static inline void
 hostapd_free_hw_features(struct hostapd_hw_modes *hw_features,
@@ -57,6 +59,12 @@ static inline int hostapd_check_ht_capab(struct hostapd_iface *iface)
 
 static inline int hostapd_prepare_rates(struct hostapd_iface *iface,
 					struct hostapd_hw_modes *mode)
+{
+	return 0;
+}
+
+static inline int hostapd_freq_flags(struct hostapd_iface *iface, int freq,
+				     unsigned int flags)
 {
 	return 0;
 }

@@ -1130,6 +1130,9 @@ int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err)
 	struct hostapd_data *hapd = iface->bss[0];
 	size_t j;
 	u8 *prev_addr;
+#ifdef CONFIG_P2P
+	int disallow_legacy_clients;
+#endif /* CONFIG_P2P */
 
 	if (err) {
 		wpa_printf(MSG_ERROR, "Interface initialization failed");
@@ -1199,6 +1202,12 @@ int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err)
 
 	prev_addr = hapd->own_addr;
 
+#ifdef CONFIG_P2P
+	disallow_legacy_clients =
+		hostapd_freq_flags(iface, iface->freq,
+				   HOSTAPD_CHAN_INDOOR_ONLY);
+#endif /* CONFIG_P2P */
+
 	for (j = 0; j < iface->num_bss; j++) {
 		hapd = iface->bss[j];
 		if (j)
@@ -1207,6 +1216,10 @@ int hostapd_setup_interface_complete(struct hostapd_iface *iface, int err)
 			return -1;
 		if (hostapd_mac_comp_empty(hapd->conf->bssid) == 0)
 			prev_addr = hapd->own_addr;
+#ifdef CONFIG_P2P
+		if (hapd->p2p)
+			hapd->disallow_legacy_clients = disallow_legacy_clients;
+#endif /* CONFIG_P2P */
 	}
 	hapd = iface->bss[0];
 
