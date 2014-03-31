@@ -2995,6 +2995,12 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 
 	config->sched_scan_interval = DEFAULT_SCHED_SCAN_INTERVAL;
 
+#ifdef CONFIG_DEFAULT_WOWLAN_TRIGGERS
+	config->wowlan_triggers = os_strdup(CONFIG_DEFAULT_WOWLAN_TRIGGERS);
+	if (!config->wowlan_triggers)
+		wpa_printf(MSG_ERROR, "Failed to duplicate wowlan triggers");
+#endif
+
 	if (ctrl_interface)
 		config->ctrl_interface = os_strdup(ctrl_interface);
 	if (driver_param)
