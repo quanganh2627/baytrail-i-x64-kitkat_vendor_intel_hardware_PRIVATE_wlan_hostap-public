@@ -3877,22 +3877,23 @@ union wpa_event_data {
 
 	/**
 	 * tcm_changed - Data for EVENT_TCM_CHANGED
-	 *
-	 * This is aggregated status of all interfaces sharing the radio.
+	 * @vi_vo_present: 1 if Video or Voice traffic is currently present on
+	 *	one of the interfaces sharing the radio, 0 otherwise.
+	 * @traffic_load: Aggregated traffic load on all the interfaces sharing
+	 *	the radio.
+	 * @iface_macaddr: MAC address of the interface that changed its TCM
+	 *	status.
+	 * @iface_vi_vo_present: 1 if Video or Voice traffic is currently
+	 *	present on the interface with the specified MAC address.
+	 * @iface_traffic_load: Current traffic load on the interface with the
+	 *	specified MAC address.
 	 */
 	struct tcm_changed {
-		/**
-		 * vi_vo_present - Whether VI/VO traffic is currently present
-		 *
-		 * 1 if Video or Voice traffic is currently present,
-		 * 0 otherwise.
-		 */
-		unsigned int vi_vo_present;
-
-		/**
-		 * traffic_load - Current traffic load
-		 */
+		unsigned int vi_vo_present:1;
 		enum traffic_load traffic_load;
+		u8 iface_macaddr[ETH_ALEN];
+		unsigned int iface_vi_vo_present:1;
+		enum traffic_load iface_traffic_load;
 	} tcm_changed;
 };
 

@@ -870,6 +870,17 @@ struct wpa_supplicant {
 	unsigned int ext_work_id;
 
 	unsigned int csa_supported:1;
+
+	/*
+	 * When set, indicates that Video or Voice traffic is present on
+	 * this interface.
+	 */
+	unsigned int vi_vo_present:1;
+
+	/*
+	 * Traffic load on this interface.
+	 */
+	enum traffic_load traffic_load;
 };
 
 
@@ -967,6 +978,9 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 void wpas_request_connection(struct wpa_supplicant *wpa_s);
 int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf);
 void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s);
+
+struct wpa_supplicant *
+wpas_radio_get_iface_by_macaddr(struct wpa_supplicant *wpa_s, u8 *addr);
 
 /**
  * wpa_supplicant_ctrl_iface_ctrl_rsp_handle - Handle a control response

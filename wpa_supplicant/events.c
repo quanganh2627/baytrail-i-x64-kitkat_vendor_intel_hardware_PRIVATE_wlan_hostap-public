@@ -2904,6 +2904,14 @@ static void wpa_supplicant_event_tcm_changed(struct wpa_supplicant *wpa_s,
 					     union wpa_event_data *data)
 {
 	struct tcm_data *tcm_data = &wpa_s->radio->tcm_data;
+	struct wpa_supplicant *ifs;
+
+	ifs = wpas_radio_get_iface_by_macaddr(wpa_s,
+					      data->tcm_changed.iface_macaddr);
+	if (ifs) {
+		ifs->traffic_load = data->tcm_changed.iface_traffic_load;
+		ifs->vi_vo_present = !!data->tcm_changed.iface_vi_vo_present;
+	}
 
 	if (data->tcm_changed.traffic_load == tcm_data->traffic_load &&
 	    data->tcm_changed.vi_vo_present == tcm_data->vi_vo_present)

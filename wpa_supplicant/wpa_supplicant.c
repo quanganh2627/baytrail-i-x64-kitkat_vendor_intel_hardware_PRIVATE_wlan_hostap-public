@@ -4872,3 +4872,19 @@ void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s)
 			wpas_scan_restart_sched_scan(ifs);
 	}
 }
+
+struct wpa_supplicant *
+wpas_radio_get_iface_by_macaddr(struct wpa_supplicant *wpa_s, u8 *addr)
+{
+	struct wpa_supplicant *ifs;
+
+	if (!wpa_s || !addr)
+		return NULL;
+
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (os_memcmp(addr, ifs->own_addr, ETH_ALEN) == 0)
+			return ifs;
+	}
+	return NULL;
+}
