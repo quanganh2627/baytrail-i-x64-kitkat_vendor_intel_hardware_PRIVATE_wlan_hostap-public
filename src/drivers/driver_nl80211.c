@@ -2823,12 +2823,25 @@ static void nl80211_vendor_event_qca(struct wpa_driver_nl80211_data *drv,
 }
 
 
+/* Converts iwl_mvm_vendor_load to a common format */
+static enum traffic_load
+intel_nl80211_convert_traffic_load(enum iwl_mvm_vendor_load load)
+{
+	switch (load) {
+	case IWL_MVM_VENDOR_LOAD_MEDIUM:
+		return TRAFFIC_LOAD_MEDIUM;
+	case IWL_MVM_VENDOR_LOAD_HIGH:
+		return TRAFFIC_LOAD_HIGH;
+	default:
+		return TRAFFIC_LOAD_LOW;
+	}
+}
+
 static void intel_nl80211_tcm_event(struct wpa_driver_nl80211_data *drv,
 				    struct nlattr *data)
 {
 	struct nlattr *tcm[MAX_IWL_MVM_VENDOR_ATTR + 1];
 	union wpa_event_data event;
-	enum iwl_mvm_vendor_load traffic_load;
 	static struct nla_policy tcm_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 		[IWL_MVM_VENDOR_ATTR_LOW_LATENCY] = { .type = NLA_FLAG },
 		[IWL_MVM_VENDOR_ATTR_VIF_ADDR] = { .type = NLA_UNSPEC },
@@ -2846,20 +2859,24 @@ static void intel_nl80211_tcm_event(struct wpa_driver_nl80211_data *drv,
 
 	event.tcm_changed.vi_vo_present =
 		nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_LL]);
-	traffic_load = nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_LOAD]);
-	switch (traffic_load) {
-	case IWL_MVM_VENDOR_LOAD_LOW:
-		event.tcm_changed.traffic_load = TRAFFIC_LOAD_LOW;
-		break;
-	case IWL_MVM_VENDOR_LOAD_MEDIUM:
-		event.tcm_changed.traffic_load = TRAFFIC_LOAD_MEDIUM;
-		break;
-	case IWL_MVM_VENDOR_LOAD_HIGH:
-		event.tcm_changed.traffic_load = TRAFFIC_LOAD_HIGH;
-		break;
-	default:
-		wpa_printf(MSG_DEBUG, "nl80211: Ignore invalid TCM data");
-		return;
+	event.tcm_changed.traffic_load = intel_nl80211_convert_traffic_load(
+		nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_LOAD]));
+
+	if (tcm[IWL_MVM_VENDOR_ATTR_VIF_ADDR]) {
+		if (!tcm[IWL_MVM_VENDOR_ATTR_VIF_LL] ||
+		    !tcm[IWL_MVM_VENDOR_ATTR_VIF_LOAD]) {
+			wpa_printf(MSG_DEBUG,
+				   "nl80211: Ignore invalid vif TCM data");
+		} else {
+			os_memcpy(event.tcm_changed.iface_macaddr,
+				  nla_data(tcm[IWL_MVM_VENDOR_ATTR_VIF_ADDR]),
+				  ETH_ALEN);
+			event.tcm_changed.iface_vi_vo_present =
+				nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_VIF_LL]);
+			event.tcm_changed.iface_traffic_load =
+				intel_nl80211_convert_traffic_load(
+					nla_get_u8(tcm[IWL_MVM_VENDOR_ATTR_VIF_LOAD]));
+		}
 	}
 	wpa_supplicant_event(drv->ctx, EVENT_TCM_CHANGED, &event);
 }
