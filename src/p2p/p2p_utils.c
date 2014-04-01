@@ -460,3 +460,29 @@ unsigned int p2p_is_indoor_device(struct p2p_peer_info *peer)
 	}
 	return 0;
 }
+
+int p2p_channels_to_freqs(const struct p2p_channels *channels,
+			  int *freq_list,
+			  unsigned int num)
+{
+	unsigned int i, idx;
+
+	for (i = 0, idx = 0; i < channels->reg_classes; i++) {
+		const struct p2p_reg_class *c = &channels->reg_class[i];
+		unsigned int j;
+
+		if (idx + 1 == num)
+			break;
+		for (j = 0; j < c->channels; j++) {
+			int freq;
+			if (idx + 1 == num)
+				break;
+			freq = ieee80211_channel_to_freq(c->channel[j],
+							 c->reg_class);
+			if (freq < 0)
+				continue;
+			freq_list[idx++] = freq;
+		}
+	}
+	return idx;
+}
