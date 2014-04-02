@@ -1225,12 +1225,35 @@ static void wpas_p2p_add_psk_list(struct wpa_supplicant *wpa_s,
 }
 
 
+static void p2p_go_save_group_common_freqs(struct wpa_supplicant *wpa_s,
+					   struct p2p_go_neg_results *params)
+{
+	unsigned int i, len = int_array_len(wpa_s->go_params->freq_list);
+
+	wpa_s->p2p_group_common_freqs_num = 0;
+	wpa_s->p2p_group_common_freqs = os_zalloc(len * sizeof(int));
+
+	if (!wpa_s->p2p_group_common_freqs)
+		return;
+
+	for (i = 0; i < len; i++) {
+		if (!wpa_s->go_params->freq_list[i])
+			break;
+		wpa_s->p2p_group_common_freqs[i] =
+			wpa_s->go_params->freq_list[i];
+	}
+	wpa_s->p2p_group_common_freqs_num = i;
+}
+
+
 static void p2p_go_configured(void *ctx, void *data)
 {
 	struct wpa_supplicant *wpa_s = ctx;
 	struct p2p_go_neg_results *params = data;
 	struct wpa_ssid *ssid;
 	int network_id = -1;
+
+	p2p_go_save_group_common_freqs(wpa_s, params);
 
 	ssid = wpa_s->current_ssid;
 	if (ssid && ssid->mode == WPAS_MODE_P2P_GO) {
@@ -1321,22 +1344,6 @@ static void p2p_go_configured(void *ctx, void *data)
 	} else if (wpa_s->p2p_pin[0])
 		wpa_supplicant_ap_wps_pin(wpa_s, params->peer_interface_addr,
 					  wpa_s->p2p_pin, NULL, 0, 0);
-
-	/* save the group common freqs */
-	wpa_s->p2p_group_common_freqs =
-		os_zalloc(P2P_MAX_CHANNELS * sizeof(int));
-	wpa_s->p2p_group_common_freqs_num = 0;
-
-	if (wpa_s->p2p_group_common_freqs) {
-		unsigned int i;
-		for (i = 0; i < P2P_MAX_CHANNELS; i++) {
-			if (!wpa_s->go_params->freq_list[i])
-				break;
-			wpa_s->p2p_group_common_freqs[i] =
-				wpa_s->go_params->freq_list[i];
-		}
-		wpa_s->p2p_group_common_freqs_num = i;
-	}
 
 	os_free(wpa_s->go_params);
 	wpa_s->go_params = NULL;
@@ -2967,7 +2974,7 @@ static int wpas_p2p_go_is_peer_freq(struct wpa_supplicant *wpa_s, int freq)
 	unsigned int i;
 
 	/* assume no restrictions */
-	if (!wpa_s->p2p_group_common_freqs)
+	if (!wpa_s->p2p_group_common_freqs_num)
 		return 1;
 
 	for (i = 0; i < wpa_s->p2p_group_common_freqs_num; i++) {
@@ -5271,7 +5278,7 @@ static int wpas_p2p_init_go_params(struct wpa_supplicant *wpa_s,
 	params->ht40 = ht40;
 	params->vht = vht;
 
-	if (wpa_s->p2p_group_common_freqs)
+	if (wpa_s->p2p_group_common_freqs_num)
 		wpa_printf(MSG_DEBUG, "P2P: %s called for an active GO",
 			   __func__);
 
