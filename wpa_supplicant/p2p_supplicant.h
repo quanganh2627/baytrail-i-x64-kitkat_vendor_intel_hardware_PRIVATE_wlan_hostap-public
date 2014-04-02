@@ -118,8 +118,19 @@ int wpas_p2p_set_noa(struct wpa_supplicant *wpa_s, u8 count, int start,
 int wpas_p2p_set_cross_connect(struct wpa_supplicant *wpa_s, int enabled);
 void wpas_p2p_notif_connected(struct wpa_supplicant *wpa_s);
 void wpas_p2p_notif_disconnected(struct wpa_supplicant *wpa_s);
-int wpas_p2p_notif_pbc_overlap(struct wpa_supplicant *wpa_s);
-void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s);
+
+enum wpas_p2p_channel_update_trig {
+	WPAS_P2P_CHANNEL_UPDATE_ANY = 0,
+	WPAS_P2P_CHANNEL_UPDATE_DRIVER,
+	WPAS_P2P_CHANNEL_UPDATE_STATE_CHANGE,
+	WPAS_P2P_CHANNEL_UPDATE_AVOID,
+	WPAS_P2P_CHANNEL_UPDATE_DISALLOW,
+	WPAS_P2P_CHANNEL_UPDATE_CS,
+};
+
+void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s,
+				  enum wpas_p2p_channel_update_trig trig);
+
 int wpas_p2p_cancel(struct wpa_supplicant *wpa_s);
 void wpas_p2p_interface_unavailable(struct wpa_supplicant *wpa_s);
 void wpas_p2p_update_best_channels(struct wpa_supplicant *wpa_s,

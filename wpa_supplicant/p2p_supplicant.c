@@ -153,7 +153,8 @@ static void wpas_p2p_move_go(void *eloop_ctx, void *timeout_ctx);
 static void wpas_p2p_reconsider_moving_go(void *eloop_ctx, void *timeout_ctx);
 static void wpas_p2p_consider_moving_gos(struct wpa_supplicant *wpa_s,
 					 struct wpa_used_freq_data *freqs,
-					 unsigned int num);
+					 unsigned int num,
+					 enum wpas_p2p_channel_update_trig trig);
 
 /*
  * Get the number of concurrent channels that the HW can operate, but that are
@@ -6752,7 +6753,8 @@ void wpas_p2p_pbc_overlap_cb(void *eloop_ctx, void *timeout_ctx)
 }
 
 
-void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s)
+void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s,
+				  enum wpas_p2p_channel_update_trig trig)
 {
 	struct p2p_channels chan, cli_chan, ind_chan;
 	struct wpa_used_freq_data *freqs = NULL;
@@ -6788,7 +6790,7 @@ void wpas_p2p_update_channel_list(struct wpa_supplicant *wpa_s)
 	 * possible that due to policy consideration, it would preferable to
 	 * move it to a frequency already used by other station interfaces
 	 */
-	wpas_p2p_consider_moving_gos(wpa_s, freqs, num);
+	wpas_p2p_consider_moving_gos(wpa_s, freqs, num, trig);
 
 	os_free(freqs);
 }
@@ -8239,7 +8241,8 @@ static void wpas_p2p_reconsider_moving_go(void *eloop_ctx, void *timeout_ctx)
 	num = get_shared_radio_freqs_data(wpa_s, freqs, num);
 
 	/* previous attempt to move a GO was not possible try again. */
-	wpas_p2p_consider_moving_gos(wpa_s, freqs, num);
+	wpas_p2p_consider_moving_gos(wpa_s, freqs, num,
+				     WPAS_P2P_CHANNEL_UPDATE_ANY);
 
 	os_free(freqs);
 }
@@ -8353,7 +8356,8 @@ reschedule:
 
 static void wpas_p2p_consider_moving_gos(struct wpa_supplicant *wpa_s,
 					 struct wpa_used_freq_data *freqs,
-					 unsigned int num)
+					 unsigned int num,
+					 enum wpas_p2p_channel_update_trig trig)
 {
 	struct wpa_supplicant *ifs;
 
@@ -8370,6 +8374,20 @@ static void wpas_p2p_consider_moving_gos(struct wpa_supplicant *wpa_s,
 		if (ifs->current_ssid == NULL ||
 		    ifs->current_ssid->mode != WPAS_MODE_P2P_GO)
 			continue;
+
+		/*
+		 * The GO was just started or completed channel switch, no need
+		 * to move it
+		 */
+		if (wpa_s == ifs &&
+		    (trig == WPAS_P2P_CHANNEL_UPDATE_STATE_CHANGE ||
+		     trig == WPAS_P2P_CHANNEL_UPDATE_CS)) {
+			wpa_dbg(wpa_s, MSG_DEBUG, "GO move: schedule re-consideration");
+			eloop_register_timeout(P2P_RECONSIDER_GO_MOVE_DELAY, 0,
+					       wpas_p2p_reconsider_moving_go,
+					       wpa_s, NULL);
+			continue;
+		}
 
 		wpas_p2p_consider_moving_one_go(ifs, freqs, num);
 	}
@@ -8394,7 +8412,8 @@ void wpas_p2p_indicate_state_change(struct wpa_supplicant *wpa_s)
 		break;
 	}
 
-	wpas_p2p_update_channel_list(wpa_s);
+	wpas_p2p_update_channel_list(wpa_s,
+				     WPAS_P2P_CHANNEL_UPDATE_STATE_CHANGE);
 }
 
 void wpas_p2p_freq_priority_changed(struct wpa_supplicant *wpa_s)
@@ -8469,7 +8488,7 @@ void wpas_p2p_freq_priority_changed(struct wpa_supplicant *wpa_s)
 	 * This will trigger move of GOs in case that the channel isn't valid or
 	 * in case the GO can now use a better channel
 	 */
-	wpas_p2p_update_channel_list(wpa_s);
+	wpas_p2p_update_channel_list(wpa_s, WPAS_P2P_CHANNEL_UPDATE_AVOID);
 
 	/* no need to free disallow.range as it now referenced */
 	os_free(avoid.range);
