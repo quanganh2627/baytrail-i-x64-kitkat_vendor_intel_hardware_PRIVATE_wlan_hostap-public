@@ -2965,6 +2965,19 @@ static void wpas_prov_disc_fail(void *ctx, const u8 *peer,
 }
 
 
+static void wpas_p2p_go_dump_common_freqs(struct wpa_supplicant *wpa_s)
+{
+	unsigned int i;
+
+	wpa_dbg(wpa_s, MSG_DEBUG, "Common Group frequencies (len=%u):",
+		wpa_s->p2p_group_common_freqs_num);
+
+	for (i = 0; i < wpa_s->p2p_group_common_freqs_num; i++)
+		wpa_dbg(wpa_s, MSG_DEBUG, "freq[%u]: %d ",
+			i, wpa_s->p2p_group_common_freqs[i]);
+}
+
+
 /*
  * Check if the given frequency is one of the possible operating frequencies
  * set after the completion of the GoN.
@@ -2972,6 +2985,8 @@ static void wpas_prov_disc_fail(void *ctx, const u8 *peer,
 static int wpas_p2p_go_is_peer_freq(struct wpa_supplicant *wpa_s, int freq)
 {
 	unsigned int i;
+
+	wpas_p2p_go_dump_common_freqs(wpa_s);
 
 	/* assume no restrictions */
 	if (!wpa_s->p2p_group_common_freqs_num)
