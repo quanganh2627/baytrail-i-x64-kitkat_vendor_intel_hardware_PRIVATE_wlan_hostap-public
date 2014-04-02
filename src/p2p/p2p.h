@@ -1816,6 +1816,17 @@ const u8 * p2p_group_get_dev_addr(struct p2p_group *group, const u8 *addr);
 int p2p_group_is_client_connected(struct p2p_group *group, const u8 *dev_addr);
 
 /**
+ *  p2p_group_get_common_freqs - get the group common frequencies
+ * @group: P2P group context from p2p_group_init()
+ * @common_freqs: on return will hold the group common frequencies
+ * @num: on return will hold the number of group common frequencies
+ * Returns: 0 on success, -1 otherwise
+ */
+int p2p_group_get_common_freqs(struct p2p_group *group,
+			       int *common_freqs,
+			       unsigned int *num);
+
+/**
  * p2p_get_peer_found - Get P2P peer info structure of a found peer
  * @p2p: P2P module context from p2p_init()
  * @addr: P2P Device Address of the peer or %NULL to indicate the first peer
