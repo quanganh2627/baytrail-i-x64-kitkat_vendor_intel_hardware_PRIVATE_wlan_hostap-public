@@ -1651,9 +1651,14 @@ static void scan_res_presort(struct wpa_supplicant *wpa_s,
 {
 	size_t i, j;
 	struct wpa_scan_res *r;
+	int freq_index, freqs_num = wpa_s->num_multichan_concurrent;
+	int *p2p_freqs = os_malloc(freqs_num * sizeof(int));
 
 	if (wpa_s->bssid_filter == NULL && wpa_s->setband == WPA_SETBAND_AUTO)
 		return;
+
+	freqs_num = p2p_freqs ? wpas_get_used_p2p_freqs_hp(wpa_s, p2p_freqs,
+							   freqs_num) : 0;
 
 	for (i = 0, j = 0; i < res->num; i++) {
 		r = res->res[i];
@@ -1668,6 +1673,15 @@ static void scan_res_presort(struct wpa_supplicant *wpa_s,
 
 		res->res[j++] = r;
 		r->freq_priority = wpas_freq_priority_value(wpa_s, r->freq);
+		if (r->freq_priority >= WPA_FREQ_PRIORITY_LOW_LATENCY)
+			continue;
+
+		for (freq_index = 0; freq_index < freqs_num; freq_index++)
+			if (r->freq == p2p_freqs[freq_index]) {
+				r->freq_priority =
+					WPA_FREQ_PRIORITY_LOW_LATENCY;
+				break;
+			}
 	}
 
 	if (res->num != j) {
@@ -1675,6 +1689,7 @@ static void scan_res_presort(struct wpa_supplicant *wpa_s,
 			   (int) (res->num - j));
 		res->num = j;
 	}
+	os_free(p2p_freqs);
 }
 
 

@@ -982,6 +982,8 @@ void wpas_handle_tcm_changed(struct wpa_supplicant *wpa_s);
 struct wpa_supplicant *
 wpas_radio_get_iface_by_macaddr(struct wpa_supplicant *wpa_s, u8 *addr);
 
+int wpas_get_used_p2p_freqs_hp(struct wpa_supplicant *wpa_s, int *freq,
+			       unsigned int len);
 /**
  * wpa_supplicant_ctrl_iface_ctrl_rsp_handle - Handle a control response
  * @wpa_s: Pointer to wpa_supplicant data

@@ -4888,3 +4888,42 @@ wpas_radio_get_iface_by_macaddr(struct wpa_supplicant *wpa_s, u8 *addr)
 	}
 	return NULL;
 }
+
+/**
+ * wpas_get_used_p2p_freqs_hp - get high priority frequencies used by p2p
+ * @wpa_s: Pointer to wpa_supplicant data
+ * @freqs: Buffer for returned frequencies
+ * @len: Buffer length
+ * Returns: Number of frequencies found.
+ *
+ * This function returns the frequencies that are currently in use by a P2P
+ * interface for Voice/Video or high traffic.
+ * These frequencies have high priority when selecting an operating frequency
+ * (for example, when selecting a BSS), because staying on the same channel can
+ * result in reducing interference with the Voice/Video or high traffic.
+ */
+int wpas_get_used_p2p_freqs_hp(struct wpa_supplicant *wpa_s, int *freqs,
+			       unsigned int len)
+{
+	struct wpa_supplicant *ifs;
+	unsigned int idx = 0;
+
+	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
+			 radio_list) {
+		if (idx == len)
+			break;
+
+		if (!ifs->current_ssid ||
+		    (!ifs->vi_vo_present && ifs->traffic_load !=
+		     TRAFFIC_LOAD_HIGH))
+			continue;
+
+		if (ifs->current_ssid->mode == WPAS_MODE_P2P_GO)
+			freqs[idx++] = ifs->current_ssid->frequency;
+		else if (ifs->current_ssid->mode == WPAS_MODE_INFRA &&
+			 ifs->p2p_group_interface ==
+			 P2P_GROUP_INTERFACE_CLIENT)
+			freqs[idx++] = ifs->assoc_freq;
+	}
+	return idx;
+}
