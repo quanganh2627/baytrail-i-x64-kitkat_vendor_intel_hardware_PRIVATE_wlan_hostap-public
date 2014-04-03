@@ -170,6 +170,8 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 
 	switch (idx) {
 	case 0: /* Bits 0-7 */
+		if (hapd->iface->csa_supported)
+			*pos |= 0x04; /* Bit 2 - Extended Channel Switching */
 		break;
 	case 1: /* Bits 8-15 */
 		break;
