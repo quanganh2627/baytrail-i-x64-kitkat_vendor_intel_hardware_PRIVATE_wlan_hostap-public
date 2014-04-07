@@ -295,52 +295,13 @@ static u8 *hostapd_eid_ecsa(struct hostapd_data *hapd, u8 *eid)
 	return eid;
 }
 
-static u8 *hostapd_add_csa_elems(struct hostapd_data *hapd, u8 *pos,
-				 u8 *start, unsigned int *csa_counter_off,
-				 unsigned int *ecsa_counter_off)
-{
-	u8 *curr_pos = pos;
-	u8 *csa_pos = pos;
-
-	if (!csa_counter_off || !ecsa_counter_off)
-		return pos;
-
-	*csa_counter_off = 0;
-	*ecsa_counter_off = 0;
-
-	curr_pos = hostapd_eid_csa(hapd, curr_pos);
-
-	/* save an offset to the csa counter - should be last byte */
-	if (curr_pos != pos)
-		*csa_counter_off = curr_pos - start - 1;
-
-	csa_pos = curr_pos;
-	curr_pos = hostapd_eid_ecsa(hapd, curr_pos);
-
-	/* save an offset to the eCSA counter - should be last byte */
-	if (curr_pos != csa_pos)
-		*ecsa_counter_off = curr_pos - start - 1;
-
-	/* at least one of ies is added */
-	if (pos != curr_pos) {
-#ifdef CONFIG_IEEE80211N
-		curr_pos = hostapd_eid_secondary_channel(hapd, curr_pos);
-#endif
-#ifdef CONFIG_IEEE80211AC
-		curr_pos = hostapd_eid_wb_chsw_wrapper(hapd, curr_pos);
-#endif
-	}
-	return curr_pos;
-}
-
-
 static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 				   struct sta_info *sta,
 				   const struct ieee80211_mgmt *req,
 				   int is_p2p, size_t *resp_len)
 {
 	struct ieee80211_mgmt *resp;
-	u8 *pos, *epos;
+	u8 *pos, *epos, *csa_pos;
 	size_t buflen;
 
 #define MAX_PROBERESP_LEN 768
@@ -392,6 +353,13 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	/* Power Constraint element */
 	pos = hostapd_eid_pwr_constraint(hapd, pos);
 
+	/* CSA IE */
+	csa_pos = hostapd_eid_csa(hapd, pos);
+	if (csa_pos != pos)
+		hapd->iface->cs_c_off_proberesp =  csa_pos - (u8 *)resp - 1;
+
+	pos = csa_pos;
+
 	/* ERP Information element */
 	pos = hostapd_eid_erp_info(hapd, pos);
 
@@ -403,7 +371,19 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 	pos = hostapd_eid_bss_load(hapd, pos, epos - pos);
 
+	/* eCSA IE */
+	csa_pos = hostapd_eid_ecsa(hapd, pos);
+	if (csa_pos != pos)
+		hapd->iface->cs_c_off_ecsa_proberesp = csa_pos -
+						       (u8 *)resp - 1;
+
+	pos = csa_pos;
+
 #ifdef CONFIG_IEEE80211N
+	/* Secondary channel IE */
+	/* TODO: The spec doesn't specify a position for this IE */
+	pos = hostapd_eid_secondary_channel(hapd, pos);
+
 	pos = hostapd_eid_ht_capabilities(hapd, pos);
 	pos = hostapd_eid_ht_operation(hapd, pos);
 #endif /* CONFIG_IEEE80211N */
@@ -417,12 +397,13 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 	pos = hostapd_eid_adv_proto(hapd, pos);
 	pos = hostapd_eid_roaming_consortium(hapd, pos);
 
-	pos = hostapd_add_csa_elems(hapd, pos, (u8 *)resp,
-				    &hapd->iface->cs_c_off_proberesp,
-				    &hapd->iface->cs_c_off_ecsa_proberesp);
 #ifdef CONFIG_IEEE80211AC
 	pos = hostapd_eid_vht_capabilities(hapd, pos);
 	pos = hostapd_eid_vht_operation(hapd, pos);
+
+	/* Channel Switch Wrapper IE */
+	pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
+
 #endif /* CONFIG_IEEE80211AC */
 
 	/* Wi-Fi Alliance WMM */
@@ -734,7 +715,7 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	size_t resp_len = 0;
 #ifdef NEED_AP_MLME
 	u16 capab_info;
-	u8 *pos, *tailpos;
+	u8 *pos, *tailpos, *csa_pos;
 
 #define BEACON_HEAD_BUF_SIZE 256
 #define BEACON_TAIL_BUF_SIZE 512
@@ -803,6 +784,13 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	/* Power Constraint element */
 	tailpos = hostapd_eid_pwr_constraint(hapd, tailpos);
 
+	/* CSA IE */
+	csa_pos = hostapd_eid_csa(hapd, tailpos);
+	if (csa_pos != tailpos)
+		hapd->iface->cs_c_off_beacon = csa_pos - tail - 1;
+
+	tailpos = csa_pos;
+
 	/* ERP Information element */
 	tailpos = hostapd_eid_erp_info(hapd, tailpos);
 
@@ -816,7 +804,18 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	tailpos = hostapd_eid_bss_load(hapd, tailpos,
 				       tail + BEACON_TAIL_BUF_SIZE - tailpos);
 
+	/* eCSA IE */
+	csa_pos = hostapd_eid_ecsa(hapd, tailpos);
+	if (csa_pos != tailpos)
+		hapd->iface->cs_c_off_ecsa_beacon = csa_pos - tail - 1;
+
+	tailpos = csa_pos;
+
 #ifdef CONFIG_IEEE80211N
+	/* Secondary Channel IE */
+	/* TODO: The spec doesn't specify secondary channel IE position */
+	tailpos = hostapd_eid_secondary_channel(hapd, tailpos);
+
 	tailpos = hostapd_eid_ht_capabilities(hapd, tailpos);
 	tailpos = hostapd_eid_ht_operation(hapd, tailpos);
 #endif /* CONFIG_IEEE80211N */
@@ -832,12 +831,11 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 	tailpos = hostapd_eid_interworking(hapd, tailpos);
 	tailpos = hostapd_eid_adv_proto(hapd, tailpos);
 	tailpos = hostapd_eid_roaming_consortium(hapd, tailpos);
-	tailpos = hostapd_add_csa_elems(hapd, tailpos, tail,
-					&hapd->iface->cs_c_off_beacon,
-					&hapd->iface->cs_c_off_ecsa_beacon);
+
 #ifdef CONFIG_IEEE80211AC
 	tailpos = hostapd_eid_vht_capabilities(hapd, tailpos);
 	tailpos = hostapd_eid_vht_operation(hapd, tailpos);
+	tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
 #endif /* CONFIG_IEEE80211AC */
 
 	/* Wi-Fi Alliance WMM */
