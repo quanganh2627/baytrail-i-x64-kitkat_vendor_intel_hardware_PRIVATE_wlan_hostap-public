@@ -1124,7 +1124,7 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 	if (config->scan_cur_freq != DEFAULT_SCAN_CUR_FREQ)
 		fprintf(f, "scan_cur_freq=%d\n", config->scan_cur_freq);
 
-	if (config->sched_scan_interval)
+	if (config->sched_scan_interval != DEFAULT_SCHED_SCAN_INTERVAL)
 		fprintf(f, "sched_scan_interval=%u\n",
 			config->sched_scan_interval);
 
@@ -1135,11 +1135,15 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 		fprintf(f, "tdls_external_control=%d\n",
 			config->tdls_external_control);
 
+#ifdef CONFIG_DEFAULT_WOWLAN_TRIGGERS
+	if (os_strcmp(config->wowlan_triggers, CONFIG_DEFAULT_WOWLAN_TRIGGERS))
+#else
 	if (config->wowlan_triggers)
+#endif
 		fprintf(f, "wowlan_triggers=\"%s\"\n",
 			config->wowlan_triggers);
 
-	if (config->bgscan)
+	if (config->bgscan && os_strcmp(config->bgscan, DEFAULT_GLOBAL_BGSCAN))
 		fprintf(f, "bgscan=\"%s\"\n", config->bgscan);
 }
 
