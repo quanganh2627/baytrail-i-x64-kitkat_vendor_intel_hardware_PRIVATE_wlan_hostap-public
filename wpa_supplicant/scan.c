@@ -544,11 +544,6 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 	size_t max_ssids;
 	enum wpa_states prev_state;
 
-	if (wpa_s->pno || wpa_s->pno_sched_pending) {
-		wpa_dbg(wpa_s, MSG_DEBUG, "Skip scan - PNO is in progress");
-		return;
-	}
-
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Skip scan - interface disabled");
 		return;
@@ -597,6 +592,17 @@ static void wpa_supplicant_scan(void *eloop_ctx, void *timeout_ctx)
 		return;
 	}
 #endif /* CONFIG_P2P */
+
+	/*
+	 * Don't cancel the scan, defer it. Some scans are used for changing
+	 * modes inside the supplicant (roaming, auto-reconnect, etc).
+	 * Discarding the scan might hurt these processes.
+	 */
+	if (wpa_s->pno || wpa_s->pno_sched_pending) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "Defer scan - PNO is in progress");
+		wpa_supplicant_req_scan(wpa_s, 0, 100000);
+		return;
+	}
 
 	if (wpa_s->conf->ap_scan == 2)
 		max_ssids = 1;
