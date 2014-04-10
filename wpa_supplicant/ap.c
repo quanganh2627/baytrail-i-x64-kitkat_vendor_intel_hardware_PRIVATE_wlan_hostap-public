@@ -140,6 +140,9 @@ int wpas_conf_ap_freq(struct wpa_supplicant *wpa_s,
 			if (mode->vht_capab && ssid->vht) {
 				conf->ieee80211ac = 1;
 				wpas_conf_ap_vht(wpa_s, conf, mode);
+
+				/* configure all supported vht capabilities */
+				conf->vht_capab = mode->vht_capab;
 			}
 		}
 	}
