@@ -236,10 +236,6 @@ CFLAGS += -DCONFIG_PEERKEY
 endif
 
 
-ifdef CONFIG_DEFAULT_WOWLAN_TRIGGERS
-CFLAGS += -DCONFIG_DEFAULT_WOWLAN_TRIGGERS=\"$(CONFIG_DEFAULT_WOWLAN_TRIGGERS)\"
-endif
-
 ifndef CONFIG_NO_WPA
 OBJS += ../src/rsn_supp/wpa.o
 OBJS += ../src/rsn_supp/preauth.o

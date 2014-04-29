@@ -23,6 +23,12 @@ include $(LOCAL_PATH)/wpa_supplicant_conf.mk
 endif
 endif
 
+ifeq ($(BOARD_USING_INTEL_IWL),true)
+ifeq ($(TARGET_BOARD_PLATFORM),xmm6321)
+L_CFLAGS += -DCONFIG_DEFAULT_WOWLAN_TRIGGERS=\"any\"
+endif
+endif
+
 # To ignore possible wrong network configurations
 L_CFLAGS = -DWPA_IGNORE_CONFIG_ERRORS
 
