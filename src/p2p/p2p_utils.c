@@ -467,6 +467,9 @@ int p2p_channels_to_freqs(const struct p2p_channels *channels,
 {
 	unsigned int i, idx;
 
+	if (!channels || num == 0)
+		return 0;
+
 	for (i = 0, idx = 0; i < channels->reg_classes; i++) {
 		const struct p2p_reg_class *c = &channels->reg_class[i];
 		unsigned int j;
