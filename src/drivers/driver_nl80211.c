@@ -2947,6 +2947,25 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 }
 
 
+static void nl80211_del_wiphy(struct wpa_driver_nl80211_data *drv,
+			      struct nlattr **tb)
+{
+	if (!tb[NL80211_ATTR_WIPHY_NAME])
+		return;
+
+	if (os_strncmp(drv->phyname,
+		       nla_get_string(tb[NL80211_ATTR_WIPHY_NAME]),
+		       sizeof(drv->phyname)))
+	    return;
+
+	wpa_printf(MSG_DEBUG, "nl80211: the driver's wiphy has been removed");
+
+#ifdef ANDROID
+	wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
+#endif
+}
+
+
 static void do_process_drv_event(struct i802_bss *bss, int cmd,
 				 struct nlattr **tb)
 {
@@ -3124,6 +3143,9 @@ static void do_process_drv_event(struct i802_bss *bss, int cmd,
 		break;
 	case NL80211_CMD_VENDOR:
 		nl80211_vendor_event(drv, tb);
+		break;
+	case NL80211_CMD_DEL_WIPHY:
+		nl80211_del_wiphy(drv, tb);
 		break;
 	default:
 		wpa_dbg(drv->ctx, MSG_DEBUG, "nl80211: Ignored unknown event "
@@ -4077,6 +4099,16 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 	if (ret < 0) {
 		wpa_printf(MSG_ERROR, "nl80211: Could not add multicast "
 			   "membership for scan events: %d (%s)",
+			   ret, strerror(-ret));
+		goto err;
+	}
+
+	ret = nl_get_multicast_id(global, "nl80211", "config");
+	if (ret >= 0)
+		ret = nl_socket_add_membership(global->nl_event, ret);
+	if (ret < 0) {
+		wpa_printf(MSG_ERROR, "nl80211: Could not add multicast "
+			   "membership for config events: %d (%s)",
 			   ret, strerror(-ret));
 		goto err;
 	}
