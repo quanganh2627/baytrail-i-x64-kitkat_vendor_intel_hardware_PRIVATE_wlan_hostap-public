@@ -5460,7 +5460,10 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 		ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
 	}
 
-	ret = os_snprintf(buf, buflen, "%s\n", ret ? "FAIL" : "OK");
+	/* Android expects a string - create one if we didn't return one */
+	if (ret <= 0)
+		ret = os_snprintf(buf, buflen, "%s\n", ret ? "FAIL" : "OK");
+
 	return ret;
 }
 #endif /* ANDROID */
