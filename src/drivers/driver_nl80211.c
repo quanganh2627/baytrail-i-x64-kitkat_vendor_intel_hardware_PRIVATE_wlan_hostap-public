@@ -2946,6 +2946,24 @@ static void nl80211_vendor_event(struct wpa_driver_nl80211_data *drv,
 	}
 }
 
+static void nl80211_report_hang(struct wpa_driver_nl80211_data *drv)
+{
+#ifdef ANDROID
+	struct nl80211_global *global = drv->global;
+	struct wpa_driver_nl80211_data *tmp;
+
+	/* fire the event on one of the static interfaces */
+	dl_list_for_each_safe(drv, tmp, &global->interfaces,
+			      struct wpa_driver_nl80211_data, list) {
+		if (!drv->first_bss->if_dynamic)
+			break;
+	}
+	wpa_printf(MSG_DEBUG, "nl80211: %s reporting HANGED",
+		   drv->first_bss->ifname);
+
+	wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
+#endif
+}
 
 static void nl80211_del_wiphy(struct wpa_driver_nl80211_data *drv,
 			      struct nlattr **tb)
@@ -2956,13 +2974,10 @@ static void nl80211_del_wiphy(struct wpa_driver_nl80211_data *drv,
 	if (os_strncmp(drv->phyname,
 		       nla_get_string(tb[NL80211_ATTR_WIPHY_NAME]),
 		       sizeof(drv->phyname)))
-	    return;
+		return;
 
 	wpa_printf(MSG_DEBUG, "nl80211: the driver's wiphy has been removed");
-
-#ifdef ANDROID
-	wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
-#endif
+	nl80211_report_hang(drv);
 }
 
 
@@ -11378,7 +11393,7 @@ static void wpa_driver_send_hang_msg(struct wpa_driver_nl80211_data *drv)
 	drv_errors++;
 	if (drv_errors > DRV_NUMBER_SEQUENTIAL_ERRORS) {
 		drv_errors = 0;
-		wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
+		nl80211_report_hang(drv);
 	}
 }
 
@@ -11576,7 +11591,7 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					  "Macaddr = " MACSTR "\n",
 					  MAC2STR(macaddr));
 	} else if (os_strcasecmp(cmd, "RELOAD") == 0) {
-		wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
+		nl80211_report_hang(drv);
 	} else if (os_strncasecmp(cmd, "POWERMODE ", 10) == 0) {
 		int state = atoi(cmd + 10);
 		ret = wpa_driver_set_power_save(priv, state);
