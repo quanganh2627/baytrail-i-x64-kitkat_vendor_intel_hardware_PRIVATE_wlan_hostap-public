@@ -5496,6 +5496,8 @@ static int wpa_supplicant_driver_cmd(struct wpa_supplicant *wpa_s, char *cmd,
 	if (os_strncasecmp(cmd, "SETBAND ", 8) == 0) {
 		int band = atoi(cmd + 8);
 		ret = wpas_setband(wpa_s, band);
+	} else if (os_strncasecmp(cmd, "GETBAND", 7) == 0) {
+		return os_snprintf(buf, buflen, "%d\n", wpa_s->setband);
 	} else {
 		ret = wpa_drv_driver_cmd(wpa_s, cmd, buf, buflen);
 	}
