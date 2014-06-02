@@ -647,6 +647,9 @@ static void handle_auth(struct hostapd_data *hapd,
 		/* Authentication code will re-send the authentication frame
 		 * after it has received (and cached) information from the
 		 * external source. */
+		os_free(identity);
+		os_free(radius_cui);
+		hostapd_free_psk_list(psk);
 		return;
 	}
 
