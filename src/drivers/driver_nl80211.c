@@ -3337,13 +3337,12 @@ nl80211_set_country(void *priv, const char *alpha2_arg, int cell_base_hint)
 
 	wpa_printf(MSG_DEBUG, "nl80211: set country to %s cell base hint: %d",
 		   alpha2, cell_base_hint);
-	if (send_and_recv_msgs(drv, msg, NULL, NULL))
-		goto nla_put_failure;
 
-	return 0;
+	return send_and_recv_msgs(drv, msg, NULL, NULL);
+
 nla_put_failure:
 	nlmsg_free(msg);
-	return -EINVAL;
+	return -ENOBUFS;
 }
 
 
