@@ -167,5 +167,5 @@ const char * eap_server_get_name(int vendor, EapType type)
 		if (m->vendor == vendor && m->method == type)
 			return m->name;
 	}
-	return NULL;
+	return "??";
 }
