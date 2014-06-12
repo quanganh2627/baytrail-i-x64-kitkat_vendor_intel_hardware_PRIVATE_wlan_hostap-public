@@ -365,6 +365,15 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
 
 	if (name == NULL)
 		return NULL;
+
+	wpa_printf(MSG_DEBUG, "Reading configuration file '%s'", name);
+	f = fopen(name, "r");
+	if (f == NULL) {
+		wpa_printf(MSG_ERROR, "Failed to open config file '%s', "
+			   "error: %s", name, strerror(errno));
+		return NULL;
+	}
+
 	if (cfgp)
 		config = cfgp;
 	else
@@ -372,19 +381,11 @@ struct wpa_config * wpa_config_read(const char *name, struct wpa_config *cfgp)
 	if (config == NULL) {
 		wpa_printf(MSG_ERROR, "Failed to allocate config file "
 			   "structure");
+		fclose(f);
 		return NULL;
 	}
 	head = config->ssid;
 	cred_head = config->cred;
-
-	wpa_printf(MSG_DEBUG, "Reading configuration file '%s'", name);
-	f = fopen(name, "r");
-	if (f == NULL) {
-		wpa_printf(MSG_ERROR, "Failed to open config file '%s', "
-			   "error: %s", name, strerror(errno));
-		os_free(config);
-		return NULL;
-	}
 
 	while (wpa_config_get_line(buf, sizeof(buf), f, &line, &pos)) {
 		if (os_strcmp(pos, "network={") == 0) {
