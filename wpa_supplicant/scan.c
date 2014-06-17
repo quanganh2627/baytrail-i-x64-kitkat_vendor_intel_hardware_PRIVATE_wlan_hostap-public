@@ -1654,9 +1654,6 @@ static void scan_res_presort(struct wpa_supplicant *wpa_s,
 	int *p2p_freqs;
 	int freq_index, freqs_num = wpa_s->num_multichan_concurrent;
 
-	if (wpa_s->bssid_filter == NULL && wpa_s->setband == WPA_SETBAND_AUTO)
-		return;
-
 	p2p_freqs = os_malloc(freqs_num * sizeof(int));
 	freqs_num = p2p_freqs ? wpas_get_used_p2p_freqs_hp(wpa_s, p2p_freqs,
 							   freqs_num) : 0;
