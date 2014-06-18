@@ -2973,6 +2973,9 @@ struct wpa_config * wpa_config_alloc_empty(const char *ctrl_interface,
 	config->p2p_intra_bss = DEFAULT_P2P_INTRA_BSS;
 	config->p2p_go_freq_change_policy = DEFAULT_P2P_GO_FREQ_MOVE;
 
+	config->p2p_invitation = DEFAULT_P2P_INVITATION;
+	config->p2p_sd = DEFAULT_P2P_SD;
+	config->p2p_concurrent_mode = DEFAULT_P2P_CONCURRENT_MODE;
 	config->p2p_go_max_inactivity = DEFAULT_P2P_GO_MAX_INACTIVITY;
 	config->p2p_add_cli_chan = DEFAULT_P2P_ADD_CLI_CHAN;
 	config->p2p_add_cli_chan_indoor = DEFAULT_P2P_ADD_CLI_CHAN_INDOOR;
@@ -3563,6 +3566,9 @@ static const struct global_parse_data global_fields[] = {
 	{ STR(p2p_ssid_postfix), CFG_CHANGED_P2P_SSID_POSTFIX },
 	{ INT_RANGE(persistent_reconnect, 0, 1), 0 },
 	{ INT_RANGE(p2p_intra_bss, 0, 1), CFG_CHANGED_P2P_INTRA_BSS },
+	{ INT_RANGE(p2p_invitation, 0, 1), 0 },
+	{ INT_RANGE(p2p_sd, 0, 1), 0 },
+	{ INT_RANGE(p2p_concurrent_mode, 0, 1), 0 },
 	{ INT(p2p_group_idle), 0 },
 	{ INT_RANGE(p2p_go_freq_change_policy, 0, P2P_GO_FREQ_MOVE_MAX), 0 },
 	{ FUNC(p2p_pref_chan), CFG_CHANGED_P2P_PREF_CHAN },

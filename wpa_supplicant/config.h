@@ -19,6 +19,10 @@
 #define DEFAULT_P2P_GO_INTENT 7
 #define DEFAULT_P2P_INTRA_BSS 1
 
+#define DEFAULT_P2P_INVITATION 1
+#define DEFAULT_P2P_SD 1
+#define DEFAULT_P2P_CONCURRENT_MODE 1
+
 #define DEFAULT_P2P_GO_MAX_INACTIVITY (1 * 60)
 #define DEFAULT_P2P_ADD_CLI_CHAN 1
 #define DEFAULT_P2P_ADD_CLI_CHAN_INDOOR 1
@@ -687,6 +691,10 @@ struct wpa_config {
 	int p2p_add_cli_chan_indoor;
 	int p2p_ignore_shared_freq;
 	int p2p_optimize_listen_chan;
+
+	int p2p_invitation;
+	int p2p_sd;
+	int p2p_concurrent_mode;
 
 	struct wpabuf *wps_vendor_ext_m1;
 

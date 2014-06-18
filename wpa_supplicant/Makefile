@@ -1567,6 +1567,9 @@ ifndef LDO
 LDO=$(CC)
 endif
 
+ifdef CONFIG_SIGMA_API
+CFLAGS += -DCONFIG_SIGMA_API
+endif
 
 Q=@
 E=echo

@@ -4041,6 +4041,12 @@ static int p2p_ctrl_serv_disc_req(struct wpa_supplicant *wpa_s, char *cmd,
 	char *pos;
 	size_t len;
 
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
+
 	if (hwaddr_aton(cmd, dst_buf))
 		return -1;
 	dst = dst_buf;
@@ -4097,6 +4103,12 @@ static int p2p_ctrl_serv_disc_cancel_req(struct wpa_supplicant *wpa_s,
 	long long unsigned val;
 	u64 req;
 
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
+
 	if (sscanf(cmd, "%llx", &val) != 1)
 		return -1;
 	req = val;
@@ -4112,6 +4124,12 @@ static int p2p_ctrl_serv_disc_resp(struct wpa_supplicant *wpa_s, char *cmd)
 	struct wpabuf *resp_tlvs;
 	char *pos, *pos2;
 	size_t len;
+
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
 
 	pos = os_strchr(cmd, ' ');
 	if (pos == NULL)
@@ -4155,6 +4173,11 @@ static int p2p_ctrl_serv_disc_resp(struct wpa_supplicant *wpa_s, char *cmd)
 static int p2p_ctrl_serv_disc_external(struct wpa_supplicant *wpa_s,
 				       char *cmd)
 {
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
 
 	if (os_strcmp(cmd, "0") && os_strcmp(cmd, "1"))
 		return -1;
@@ -4234,6 +4257,12 @@ static int p2p_ctrl_service_add(struct wpa_supplicant *wpa_s, char *cmd)
 {
 	char *pos;
 
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
+
 	pos = os_strchr(cmd, ' ');
 	if (pos == NULL)
 		return -1;
@@ -4293,6 +4322,12 @@ static int p2p_ctrl_service_del_upnp(struct wpa_supplicant *wpa_s, char *cmd)
 static int p2p_ctrl_service_del(struct wpa_supplicant *wpa_s, char *cmd)
 {
 	char *pos;
+
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return -1;
+	}
 
 	pos = os_strchr(cmd, ' ');
 	if (pos == NULL)
@@ -4404,6 +4439,11 @@ static int p2p_ctrl_invite_group(struct wpa_supplicant *wpa_s, char *cmd)
 
 static int p2p_ctrl_invite(struct wpa_supplicant *wpa_s, char *cmd)
 {
+	if (!wpa_s->conf->p2p_invitation) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Invitation procedure is disallowed");
+		return -1;
+	}
 	if (os_strncmp(cmd, "persistent=", 11) == 0)
 		return p2p_ctrl_invite_persistent(wpa_s, cmd + 11);
 	if (os_strncmp(cmd, "group=", 6) == 0)

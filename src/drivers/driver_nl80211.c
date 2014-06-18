@@ -40,6 +40,8 @@
 #include "driver.h"
 #include "iwl_vendor_cmd_copy.h"
 
+#include "iwl_mvm_testmode_copy.h"
+
 
 #ifndef SO_WIFI_STATUS
 # if defined(__sparc__)
@@ -11844,6 +11846,40 @@ const u8 * wpa_driver_nl80211_get_macaddr(void *priv)
 	return bss->addr;
 }
 
+static int wpa_driver_nl80211_set_noa(void *priv, u8 count, int start,
+				      int duration)
+{
+	struct nl_msg *msg;
+	struct i802_bss *bss = priv;
+	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct nlattr *testdata;
+
+	if (drv->nlmode != NL80211_IFTYPE_P2P_GO)
+		return -EOPNOTSUPP;
+
+	msg = nlmsg_alloc();
+	if (!msg)
+		return -ENOMEM;
+
+	nl80211_cmd(drv, msg, 0, NL80211_CMD_TESTMODE);
+	NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, drv->ifindex);
+
+	testdata = nla_nest_start(msg, NL80211_ATTR_TESTDATA);
+	if (!testdata)
+		goto nla_put_failure;
+
+	NLA_PUT_U32(msg, IWL_MVM_TM_ATTR_CMD, IWL_MVM_TM_CMD_SET_NOA);
+	NLA_PUT_U32(msg, IWL_MVM_TM_ATTR_NOA_DURATION, duration);
+
+	nla_nest_end(msg, testdata);
+
+	return send_and_recv_msgs(drv, msg, NULL, NULL);
+
+nla_put_failure:
+	nlmsg_free(msg);
+	return -ENOBUFS;
+}
+
 static const char * scan_state_str(enum scan_states scan_state)
 {
 	switch (scan_state) {
@@ -12390,6 +12426,7 @@ const struct wpa_driver_ops wpa_driver_nl80211_ops = {
 	.set_sta_vlan = driver_nl80211_set_sta_vlan,
 	.sta_deauth = i802_sta_deauth,
 	.sta_disassoc = i802_sta_disassoc,
+	.set_noa = wpa_driver_nl80211_set_noa,
 	.read_sta_data = driver_nl80211_read_sta_data,
 	.set_freq = i802_set_freq,
 	.send_action = driver_nl80211_send_action,

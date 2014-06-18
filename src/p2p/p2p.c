@@ -2490,6 +2490,7 @@ struct p2p_data * p2p_init(const struct p2p_config *cfg)
 	p2p->next_tie_breaker &= 0x01;
 	if (cfg->sd_request)
 		p2p->dev_capab |= P2P_DEV_CAPAB_SERVICE_DISCOVERY;
+	if (cfg->p2p_invitation)
 		p2p->dev_capab |= P2P_DEV_CAPAB_INVITATION_PROCEDURE;
 
 	if (cfg->concurrent_operations)

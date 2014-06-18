@@ -1444,6 +1444,9 @@ static void wpas_p2p_clone_config(struct wpa_supplicant *dst,
 	d->p2p_group_idle = s->p2p_group_idle;
 	d->p2p_go_freq_change_policy = s->p2p_go_freq_change_policy;
 	d->p2p_intra_bss = s->p2p_intra_bss;
+	d->p2p_invitation = s->p2p_invitation;
+	d->p2p_sd = s->p2p_sd;
+	d->p2p_concurrent_mode = s->p2p_concurrent_mode;
 	d->persistent_reconnect = s->persistent_reconnect;
 	d->max_num_sta = s->max_num_sta;
 	d->pbc_in_m1 = s->pbc_in_m1;
@@ -2412,6 +2415,12 @@ static void wpas_sd_request(void *ctx, int freq, const u8 *sa, u8 dialog_token,
 	size_t buf_len;
 	char *buf;
 
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return;
+	}
+
 	wpa_hexdump(MSG_MSGDUMP, "P2P: Service Discovery Request TLVs",
 		    tlvs, tlvs_len);
 
@@ -2528,6 +2537,12 @@ static void wpas_sd_response(void *ctx, const u8 *sa, u16 update_indic,
 	u16 slen;
 	size_t buf_len;
 	char *buf;
+
+	if (!wpa_s->conf->p2p_sd) {
+		wpa_printf(MSG_DEBUG,
+			   "P2P: Service Discovery procedures are disallowed");
+		return;
+	}
 
 	wpa_hexdump(MSG_MSGDUMP, "P2P: Service Discovery Response TLVs",
 		    tlvs, tlvs_len);
@@ -4183,6 +4198,13 @@ int wpas_p2p_init(struct wpa_global *global, struct wpa_supplicant *wpa_s)
 
 	p2p.p2p_intra_bss = wpa_s->conf->p2p_intra_bss;
 
+	p2p.p2p_invitation = wpa_s->conf->p2p_invitation;
+	if (!wpa_s->conf->p2p_sd) {
+		p2p.sd_request = NULL;
+		p2p.sd_response = NULL;
+	}
+	p2p.concurrent_operations &= wpa_s->conf->p2p_concurrent_mode;
+
 	p2p.max_listen = wpa_s->max_remain_on_chan;
 
 	global->p2p = p2p_init(&p2p);
@@ -4308,6 +4330,8 @@ static int wpas_p2p_create_iface(struct wpa_supplicant *wpa_s)
 	     WPA_DRIVER_FLAGS_P2P_MGMT_AND_NON_P2P))
 		return 1; /* P2P group requires a new interface in every case
 			   */
+	if (!wpa_s->conf->p2p_concurrent_mode)
+		return 0;
 
 	if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_P2P_CONCURRENT))
 		return 0; /* driver does not support concurrent operations */

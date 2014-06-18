@@ -981,6 +981,13 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 			config->persistent_reconnect);
 	if (config->p2p_intra_bss != DEFAULT_P2P_INTRA_BSS)
 		fprintf(f, "p2p_intra_bss=%u\n", config->p2p_intra_bss);
+	if (config->p2p_invitation != DEFAULT_P2P_INVITATION)
+		fprintf(f, "p2p_invitation=%u\n", config->p2p_invitation);
+	if (config->p2p_sd != DEFAULT_P2P_SD)
+		fprintf(f, "p2p_sd=%u\n", config->p2p_sd);
+	if (config->p2p_concurrent_mode != DEFAULT_P2P_CONCURRENT_MODE)
+		fprintf(f, "p2p_concurrent_mode=%u\n",
+			config->p2p_concurrent_mode);
 	if (config->p2p_group_idle)
 		fprintf(f, "p2p_group_idle=%u\n", config->p2p_group_idle);
 	if (config->p2p_pref_chan) {

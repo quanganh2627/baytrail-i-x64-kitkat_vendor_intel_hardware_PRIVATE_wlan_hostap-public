@@ -175,6 +175,11 @@ void p2p_process_invitation_req(struct p2p_data *p2p, const u8 *sa,
 	p2p_dbg(p2p, "Received Invitation Request from " MACSTR " (freq=%d)",
 		MAC2STR(sa), rx_freq);
 
+	if (!p2p->cfg->p2p_invitation) {
+		p2p_dbg(p2p, "P2P: Invitation procedure is disallowed");
+		return;
+	}
+
 	if (p2p_parse(data, len, &msg))
 		return;
 

@@ -392,6 +392,11 @@ struct p2p_config {
 	int p2p_intra_bss;
 
 	/**
+	 * p2p_invitation - Invitation procedure is supported
+	 */
+	int p2p_invitation;
+
+	/**
 	 * ssid_postfix - Postfix data to add to the SSID
 	 *
 	 * This data will be added to the end of the SSID after the
