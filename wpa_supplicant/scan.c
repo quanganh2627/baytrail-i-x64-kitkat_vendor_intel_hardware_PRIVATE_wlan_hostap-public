@@ -1003,6 +1003,8 @@ int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
 	if (max_sched_scan_ssids < 1 || wpa_s->conf->disable_scan_offload)
 		return -1;
 
+	wpa_s->sched_scan_stop_req = 0;
+
 	if (wpa_s->sched_scanning) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Already sched scanning");
 		return 0;
@@ -1257,6 +1259,9 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 			"Prevent canceling scheduled scan - PNO is in progress");
 		return;
 	}
+
+	if (wpa_s->sched_scanning)
+		wpa_s->sched_scan_stop_req = 1;
 
 	dl_list_for_each(iface, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
@@ -1965,6 +1970,7 @@ int wpa_supplicant_stop_pno(struct wpa_supplicant *wpa_s)
 		return 0;
 
 	ret = wpa_supplicant_stop_sched_scan(wpa_s);
+	wpa_s->sched_scan_stop_req = 1;
 
 	wpa_s->pno = 0;
 	wpa_s->pno_sched_pending = 0;

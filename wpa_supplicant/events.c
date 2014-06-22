@@ -3449,8 +3449,20 @@ void wpa_supplicant_event(void *ctx, enum wpa_event_type event,
 			break;
 
 		/*
-		 * Start a new sched scan to continue searching for more SSIDs
-		 * either if timed out or PNO schedule scan is pending.
+		 * If the driver stopped scanning without being requested to,
+		 * request a new scan to continue scanning for networks.
+		 */
+		if (!wpa_s->sched_scan_stop_req) {
+			wpa_supplicant_req_scan(wpa_s, 1, 0);
+			break;
+		}
+
+		wpa_s->sched_scan_stop_req = 0;
+
+		/*
+		 * Start a new sched scan to continue searching for more
+		 * SSIDs either if timed out or PNO schedule scan is
+		 * pending.
 		 */
 		if (wpa_s->sched_scan_timed_out)
 			wpa_supplicant_req_sched_scan(wpa_s);

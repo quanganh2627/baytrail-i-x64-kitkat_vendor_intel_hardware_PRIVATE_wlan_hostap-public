@@ -509,6 +509,7 @@ struct wpa_supplicant {
 	struct wpa_radio_work *scan_work;
 	int scanning;
 	int sched_scanning;
+	int sched_scan_stop_req;
 	int new_connection;
 
 	int eapol_received; /* number of EAPOL packets received after the
