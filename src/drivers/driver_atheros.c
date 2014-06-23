@@ -4,6 +4,8 @@
  * Copyright (c) 2004, Video54 Technologies
  * Copyright (c) 2005-2007, Jouni Malinen <j@w1.fi>
  * Copyright (c) 2009, Atheros Communications
+ * Copyright(c) 2011 - 2014 Intel Mobile Communication GmbH.
+ * Copyright(c) 2011 - 2014 Intel Corporation. All rights reserved.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.
