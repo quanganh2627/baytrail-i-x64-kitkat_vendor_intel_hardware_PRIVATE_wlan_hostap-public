@@ -11568,20 +11568,42 @@ static int android_pno_stop(struct i802_bss *bss)
 	return android_priv_cmd(bss, "PNOFORCE 0");
 }
 
+
+static struct wpa_driver_nl80211_data *
+nl80211_global_get_p2pdev(struct nl80211_global *global)
+{
+	struct wpa_driver_nl80211_data *drv;
+
+	dl_list_for_each(drv, &drv->global->interfaces,
+			 struct wpa_driver_nl80211_data, list) {
+		if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
+			return drv;
+	}
+	return NULL;
+}
+
+
 static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 					 size_t buf_len)
 {
 	struct i802_bss *bss = priv;
 	struct wpa_driver_nl80211_data *drv = bss->drv;
+	struct wpa_driver_nl80211_data *p2p_drv;
 	struct ifreq ifr;
 	android_wifi_priv_cmd priv_cmd;
 	int ret = 0;
 
 	if (os_strcasecmp(cmd, "STOP") == 0) {
+		p2p_drv = nl80211_global_get_p2pdev(drv->global);
+		if (p2p_drv)
+			nl80211_set_p2pdev(p2p_drv->first_bss, 0);
 		linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 0);
 		wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "STOPPED");
 	} else if (os_strcasecmp(cmd, "START") == 0) {
 		linux_set_iface_flags(drv->global->ioctl_sock, bss->ifname, 1);
+		p2p_drv = nl80211_global_get_p2pdev(drv->global);
+		if (p2p_drv)
+			nl80211_set_p2pdev(p2p_drv->first_bss, 1);
 		wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "STARTED");
 	} else if (os_strcasecmp(cmd, "MACADDR") == 0) {
 		u8 macaddr[ETH_ALEN] = {};
