@@ -2130,8 +2130,12 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 	wpa_s->reassociate = 1;
 
 	if (wpa_supplicant_fast_associate(wpa_s) != 1) {
-		wpas_scan_reset_sched_scan(wpa_s);
-		wpa_supplicant_req_scan(wpa_s, 0, disconnected ? 100000 : 0);
+		if (!wpa_s->pno) {
+			wpas_scan_reset_sched_scan(wpa_s);
+			wpa_supplicant_req_scan(wpa_s, 0,
+						disconnected ? 100000 : 0);
+		} else
+			wpas_scan_restart_sched_scan(wpa_s);
 	}
 
 	if (ssid)
