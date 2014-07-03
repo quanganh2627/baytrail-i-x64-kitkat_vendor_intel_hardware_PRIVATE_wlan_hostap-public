@@ -11629,11 +11629,15 @@ static int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
 
 		if ((ret = ioctl(drv->global->ioctl_sock, SIOCDEVPRIVATE + 1,
 				 &ifr)) < 0) {
-			wpa_printf(MSG_ERROR, "%s: failed to issue private command %s\n", __func__, cmd);
+			wpa_printf(MSG_DEBUG,
+				   "%s: failed to issue private command %s\n",
+				   __func__, cmd);
 
 			/* wpa_driver_send_hang_msg(drv); */
 
-			wpa_printf(MSG_ERROR, "%s: Skip this failure in current implementation \n", __func__);
+			wpa_printf(MSG_DEBUG,
+				   "%s: Skip this failure in current implementation\n",
+				   __func__);
 			drv_errors = 0;
 			ret = 0;
 
