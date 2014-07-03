@@ -629,7 +629,7 @@ static int send_and_recv(struct nl80211_global *global,
 	while (err > 0) {
 		int res = nl_recvmsgs(nl_handle, cb);
 		if (res < 0) {
-			wpa_printf(MSG_INFO,
+			wpa_printf(MSG_DEBUG,
 				   "nl80211: %s->nl_recvmsgs failed: %d",
 				   __func__, res);
 		}
@@ -3298,7 +3298,7 @@ static void wpa_driver_nl80211_event_receive(int sock, void *eloop_ctx,
 
 	res = nl_recvmsgs(handle, cb);
 	if (res < 0) {
-		wpa_printf(MSG_INFO, "nl80211: %s->nl_recvmsgs failed: %d",
+		wpa_printf(MSG_DEBUG, "nl80211: %s->nl_recvmsgs failed: %d",
 			   __func__, res);
 	}
 }
