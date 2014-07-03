@@ -2758,6 +2758,7 @@ int p2p_set_country(struct p2p_data *p2p, const char *country)
 void p2p_continue_find(struct p2p_data *p2p)
 {
 	struct p2p_device *dev;
+	os_time_t remaining_usec, next_try_usec = 0;
 #ifdef ANDROID_P2P
 	int skip=1;
 #endif
@@ -2767,10 +2768,17 @@ void p2p_continue_find(struct p2p_data *p2p)
 			/* Initialize with total number of registered broadcast
 			 * SD queries. */
 			dev->sd_pending_bcast_queries = p2p->num_p2p_sd_queries;
+			dev->sd_bcast_retries = 0;
 		}
 
-		if (p2p_start_sd(p2p, dev) == 0)
+		remaining_usec = 0;
+		if (p2p_start_sd(p2p, dev, &remaining_usec) == 0)
 			return;
+
+		if (remaining_usec &&
+		    (!next_try_usec || remaining_usec < next_try_usec))
+			next_try_usec = remaining_usec;
+
 		if (dev->req_config_methods &&
 		    !(dev->flags & P2P_DEV_PD_FOR_JOIN)) {
 			p2p_dbg(p2p, "Send pending Provision Discovery Request to "
@@ -2780,6 +2788,13 @@ void p2p_continue_find(struct p2p_data *p2p)
 			if (p2p_send_prov_disc_req(p2p, dev, 0, 0) == 0)
 				return;
 		}
+	}
+
+	if (next_try_usec) {
+		/* wait a bit before next retry */
+		p2p_set_state(p2p, P2P_SD_DURING_FIND);
+		p2p_set_timeout(p2p, 0, next_try_usec);
+		return;
 	}
 
 	p2p_listen_in_find(p2p, 1);
@@ -2793,7 +2808,21 @@ static void p2p_sd_cb(struct p2p_data *p2p, int success)
 	p2p->pending_action_state = P2P_NO_PENDING_ACTION;
 
 	if (!success) {
+		struct p2p_device *dev = p2p->sd_peer;
+
+		if (dev && p2p->sd_query &&
+		    p2p->sd_query->for_all_peers &&
+		    dev->sd_bcast_retries < P2P_SD_BCAST_MAX_RETRY_COUNT) {
+			p2p_dbg(p2p, "Reschedule Service Discovery for "
+				MACSTR, MAC2STR(dev->info.p2p_device_addr));
+
+			if (dev->sd_pending_bcast_queries < 0)
+				dev->sd_pending_bcast_queries = 0;
+			dev->sd_pending_bcast_queries++;
+			dev->sd_bcast_retries++;
+		}
 		p2p->sd_peer = NULL;
+
 		p2p_continue_find(p2p);
 		return;
 	}
@@ -2803,6 +2832,8 @@ static void p2p_sd_cb(struct p2p_data *p2p, int success)
 		p2p_continue_find(p2p);
 		return;
 	}
+
+	p2p->sd_peer->sd_bcast_retries = 0;
 
 	/* Wait for response from the peer */
 	p2p_set_state(p2p, P2P_SD_DURING_FIND);

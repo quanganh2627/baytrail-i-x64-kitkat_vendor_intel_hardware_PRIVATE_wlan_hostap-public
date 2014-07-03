@@ -48,7 +48,8 @@ static int wfd_wsd_supported(struct wpabuf *wfd)
 #endif /* CONFIG_WIFI_DISPLAY */
 
 struct p2p_sd_query * p2p_pending_sd_req(struct p2p_data *p2p,
-					 struct p2p_device *dev)
+					 struct p2p_device *dev,
+					 os_time_t *remaining_usec)
 {
 	struct p2p_sd_query *q;
 	int wsd = 0;
@@ -74,9 +75,25 @@ struct p2p_sd_query * p2p_pending_sd_req(struct p2p_data *p2p,
 			if (dev->sd_pending_bcast_queries <= 0)
 				return NULL;
 			/* query number that needs to be send to the device */
-			if (count == dev->sd_pending_bcast_queries - 1)
-				return q;
-			count++;
+			if (count < dev->sd_pending_bcast_queries - 1) {
+				count++;
+				continue;
+			}
+
+			/* don't retry too soon */
+			if (dev->sd_bcast_retries) {
+				struct os_reltime age;
+
+				os_reltime_age(&dev->last_sd_bc_time, &age);
+				if (age.sec == 0 &&
+				    age.usec < P2P_SD_BCAST_RETRY_INTERVAL) {
+					*remaining_usec =
+						P2P_SD_BCAST_RETRY_INTERVAL -
+						age.usec;
+					return NULL;
+				}
+			}
+			return q;
 		}
 		if (!q->for_all_peers &&
 		    os_memcmp(q->peer, dev->info.p2p_device_addr, ETH_ALEN) ==
@@ -100,6 +117,9 @@ static void p2p_decrease_sd_bc_queries(struct p2p_data *p2p, int query_number)
 			 * removed, so update the pending count.
 			*/
 			dev->sd_pending_bcast_queries--;
+		} else {
+			/* current query is removed, reset retry counter */
+			dev->sd_bcast_retries = 0;
 		}
 	}
 }
@@ -260,7 +280,8 @@ static struct wpabuf * p2p_build_gas_comeback_resp(u8 dialog_token,
 }
 
 
-int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev)
+int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev,
+		 os_time_t *remaining_usec)
 {
 	struct wpabuf *req;
 	int ret = 0;
@@ -275,7 +296,7 @@ int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev)
 		return -1;
 	}
 
-	query = p2p_pending_sd_req(p2p, dev);
+	query = p2p_pending_sd_req(p2p, dev, remaining_usec);
 	if (query == NULL)
 		return -1;
 
@@ -289,6 +310,7 @@ int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev)
 	p2p->sd_peer = dev;
 	p2p->sd_query = query;
 	p2p->pending_action_state = P2P_PENDING_SD;
+	os_get_reltime(&dev->last_sd_bc_time);
 
 	if (p2p_send_action(p2p, freq, dev->info.p2p_device_addr,
 			    p2p->cfg->dev_addr, dev->info.p2p_device_addr,

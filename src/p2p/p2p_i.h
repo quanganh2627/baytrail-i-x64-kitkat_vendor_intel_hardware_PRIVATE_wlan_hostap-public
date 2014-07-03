@@ -12,6 +12,10 @@
 #include "utils/list.h"
 #include "p2p.h"
 
+#define P2P_SD_BCAST_MAX_RETRY_COUNT 10
+/* min interval between successive bcast sd retries (in usec) */
+#define P2P_SD_BCAST_RETRY_INTERVAL (100 * 1000)
+
 enum p2p_role_indication;
 
 enum p2p_go_state {
@@ -109,6 +113,8 @@ struct p2p_device {
 	u8 go_timeout;
 	u8 client_timeout;
 	int sd_pending_bcast_queries;
+	int sd_bcast_retries;
+	struct os_reltime last_sd_bc_time;
 };
 
 struct p2p_sd_query {
@@ -678,7 +684,8 @@ int p2p_build_wps_ie(struct p2p_data *p2p, struct wpabuf *buf, int pw_id,
 
 /* p2p_sd.c */
 struct p2p_sd_query * p2p_pending_sd_req(struct p2p_data *p2p,
-					 struct p2p_device *dev);
+					 struct p2p_device *dev,
+					 os_time_t *remaining_usec);
 void p2p_free_sd_queries(struct p2p_data *p2p);
 void p2p_rx_gas_initial_req(struct p2p_data *p2p, const u8 *sa,
 			    const u8 *data, size_t len, int rx_freq);
@@ -688,7 +695,8 @@ void p2p_rx_gas_comeback_req(struct p2p_data *p2p, const u8 *sa,
 			     const u8 *data, size_t len, int rx_freq);
 void p2p_rx_gas_comeback_resp(struct p2p_data *p2p, const u8 *sa,
 			      const u8 *data, size_t len, int rx_freq);
-int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev);
+int p2p_start_sd(struct p2p_data *p2p, struct p2p_device *dev,
+		 os_time_t *remaining_usec);
 
 /* p2p_go_neg.c */
 int p2p_peer_channels_check(struct p2p_data *p2p, struct p2p_channels *own,
