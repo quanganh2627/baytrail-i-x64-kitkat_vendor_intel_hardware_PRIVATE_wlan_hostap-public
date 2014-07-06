@@ -11574,7 +11574,7 @@ nl80211_global_get_p2pdev(struct nl80211_global *global)
 {
 	struct wpa_driver_nl80211_data *drv;
 
-	dl_list_for_each(drv, &drv->global->interfaces,
+	dl_list_for_each(drv, &global->interfaces,
 			 struct wpa_driver_nl80211_data, list) {
 		if (drv->nlmode == NL80211_IFTYPE_P2P_DEVICE)
 			return drv;
