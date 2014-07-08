@@ -29,7 +29,6 @@ struct bgscan_simple_data {
 	int short_interval; /* use if signal < threshold */
 	int long_interval; /* use if signal > threshold */
 	struct os_reltime last_bgscan;
-	unsigned int signal_tracking_enabled:1;
 
 	/*
 	 * In signal tracking mode, scan is not done periodically, but
@@ -112,9 +111,6 @@ static int bgscan_simple_get_params(struct bgscan_simple_data *data,
 	}
 	pos++;
 	data->long_interval = atoi(pos);
-	pos = os_strchr(pos, ':');
-	if (pos && pos[1] == 't')
-		data->signal_tracking_enabled = 1;
 
 	return 0;
 }
@@ -373,11 +369,10 @@ static void bgscan_simple_notify_tcm_changed(void *priv,
 		vi_vo_present;
 
 	/*
-	 * If traffic awareness is not set, or the notified change doesn't
-	 * affect bgscan operating mode, ignore this notification.
+	 * If notified change doesn't affect bgscan operating mode,
+	 * ignore this notification.
 	 */
-	if (!data->signal_tracking_enabled ||
-	    data->signal_tracking_mode == need_signal_tracking)
+	if (data->signal_tracking_mode == need_signal_tracking)
 		return;
 
 	if (need_signal_tracking)
