@@ -1244,13 +1244,13 @@ void wpa_supplicant_cancel_delayed_sched_scan(struct wpa_supplicant *wpa_s)
 
 
 /**
- * wpa_supplicant_cancel_sched_scan - Stop running scheduled scans
+ * wpa_supplicant_suspend_sched_scan - Suspend running scheduled scan
  * @wpa_s: Pointer to wpa_supplicant data
  *
- * This function is used to stop a periodic scheduled scan on all interfaces
+ * This function is used to suspend a periodic scheduled scan on all interfaces
  * that share the same radio.
  */
-void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
+void wpa_supplicant_suspend_sched_scan(struct wpa_supplicant *wpa_s)
 {
 	struct wpa_supplicant *iface;
 
@@ -1259,9 +1259,6 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 			"Prevent canceling scheduled scan - PNO is in progress");
 		return;
 	}
-
-	if (wpa_s->sched_scanning)
-		wpa_s->sched_scan_stop_req = 1;
 
 	dl_list_for_each(iface, &wpa_s->radio->ifaces, struct wpa_supplicant,
 			 radio_list) {
@@ -1275,6 +1272,21 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 				     NULL);
 		wpa_supplicant_stop_sched_scan(iface);
 	}
+}
+
+
+/**
+ * wpa_supplicant_cancel_sched_scan - Stop running scheduled scans
+ * @wpa_s: Pointer to wpa_supplicant data
+ *
+ * This function is used to stop a periodic scheduled scan on all interfaces
+ * that share the same radio. Scan will not be resumed on this wpa_supplicant.
+ */
+void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	if (wpa_s->sched_scanning)
+		wpa_s->sched_scan_stop_req = 1;
+	wpa_supplicant_suspend_sched_scan(wpa_s);
 }
 
 
