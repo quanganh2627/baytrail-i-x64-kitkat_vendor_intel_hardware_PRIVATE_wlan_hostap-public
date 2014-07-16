@@ -954,6 +954,24 @@ void sme_disassoc_while_authenticating(struct wpa_supplicant *wpa_s,
 				       const u8 *prev_pending_bssid)
 {
 	/*
+	* Android to provide a "Scanning always available" since in Android 4.3
+	* to have a backround scan for Google's location service and other apps
+	* scan for networks even Wi-Fi is off. It is default enabled that when
+	* user switch Wi-Fi radio on/off quickly and Wi-Fi wouldn't reconnet
+	* back to remembered AP due to rejection from sme_authenticate() which
+	* would check if connect_work existed or not. If it is disabled,
+	* no such issue since  wpa_supplicant would be killed and restart when
+	* Wi-Fi enabled.
+	* wpa_supplicant_mark_disassoc() would set to WPA_DISCONNECTED before
+	* being here.
+	*/
+	if (wpa_s->connect_work && wpa_s->wpa_state == WPA_DISCONNECTED) {
+		wpa_dbg(wpa_s, MSG_DEBUG, "SME: reset "
+			"connect_work when disconnection");
+		wpas_connect_work_done(wpa_s);
+	}
+
+	/*
 	 * mac80211-workaround to force deauth on failed auth cmd,
 	 * requires us to remain in authenticating state to allow the
 	 * second authentication attempt to be continued properly.
