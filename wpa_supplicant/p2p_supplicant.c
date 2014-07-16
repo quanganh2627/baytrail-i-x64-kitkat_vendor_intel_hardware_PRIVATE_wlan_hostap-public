@@ -82,7 +82,7 @@
  * operation is considered to be in progress (e.g., to delay other scans) after
  * WPS provisioning has been completed on the GO during group formation.
  */
-#define P2P_MAX_INITIAL_CONN_WAIT_GO 10
+#define P2P_MAX_INITIAL_CONN_WAIT_GO 15
 #endif /* P2P_MAX_INITIAL_CONN_WAIT_GO */
 
 #ifndef P2P_MAX_INITIAL_CONN_WAIT_GO_REINVOKE
