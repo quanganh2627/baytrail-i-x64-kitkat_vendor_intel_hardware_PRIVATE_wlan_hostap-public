@@ -330,7 +330,6 @@ static int ieee80211n_check_40mhz_5g(struct hostapd_iface *iface,
 	int pri_chan, sec_chan, pri_freq, sec_freq, pri_bss, sec_bss;
 	int bss_pri_chan, bss_sec_chan;
 	size_t i;
-	int match;
 
 	pri_chan = iface->conf->channel;
 	sec_chan = iface->conf->secondary_channel * 4;
@@ -364,17 +363,20 @@ static int ieee80211n_check_40mhz_5g(struct hostapd_iface *iface,
 	 * channels that we are about to use (if already mixed order in
 	 * existing BSSes, use own preference).
 	 */
-	match = 0;
 	for (i = 0; i < scan_res->num; i++) {
 		struct wpa_scan_res *bss = scan_res->res[i];
 		ieee80211n_get_pri_sec_chan(bss, &bss_pri_chan, &bss_sec_chan);
 		if (pri_chan == bss_pri_chan &&
 		    sec_chan == bss_sec_chan) {
-			match = 1;
-			break;
+			return 1;
 		}
 	}
-	if (!match) {
+
+	/*
+	 * If there are no beacons on our primary channel, switch our own
+	 * primary and secondary channel if an overlapping AP is found.
+	 */
+	if (!pri_bss) {
 		for (i = 0; i < scan_res->num; i++) {
 			struct wpa_scan_res *bss = scan_res->res[i];
 			ieee80211n_get_pri_sec_chan(bss, &bss_pri_chan,
