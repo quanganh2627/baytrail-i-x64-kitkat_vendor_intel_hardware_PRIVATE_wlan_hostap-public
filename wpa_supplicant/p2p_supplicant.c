@@ -3892,7 +3892,6 @@ int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
 {
 	int op;
 	enum chan_allowed res;
-	int ret = 0;
 
 	for (op = 0; op_class[op].op_class; op++) {
 		struct p2p_oper_class_map *o = &op_class[op];
@@ -3900,16 +3899,15 @@ int wpas_p2p_get_ht40_mode(struct wpa_supplicant *wpa_s,
 
 		for (ch = o->min_chan; ch <= o->max_chan; ch += o->inc) {
 			if (o->mode != HOSTAPD_MODE_IEEE80211A ||
-			    o->bw == BW20 || ch != channel)
+			    (o->bw != BW40PLUS && o->bw != BW40MINUS) ||
+			    ch != channel)
 				continue;
 			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw);
-			if (res == ALLOWED) {
-				ret = (o->bw == BW40MINUS) ? -1 : 1;
-				break;
-			}
+			if (res == ALLOWED)
+				return (o->bw == BW40MINUS) ? -1 : 1;
 		}
 	}
-	return ret;
+	return 0;
 }
 
 
