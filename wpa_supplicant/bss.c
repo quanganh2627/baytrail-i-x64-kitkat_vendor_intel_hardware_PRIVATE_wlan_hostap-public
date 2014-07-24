@@ -1,7 +1,7 @@
 /*
  * BSS table
  * Copyright (c) 2009-2012, Jouni Malinen <j@w1.fi>
- * Copyright(c) 2013 - 2014 Intel Mobile Communication GmbH.
+ * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH.
  * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  *
  * This software may be distributed under the terms of the BSD license.
