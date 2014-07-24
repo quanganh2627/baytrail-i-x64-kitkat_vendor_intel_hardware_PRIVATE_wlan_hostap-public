@@ -1,5 +1,13 @@
 # Copyright (C) 2008 The Android Open Source Project
 #
+# Copyright(c) 2003-2014, Jouni Malinen <j@w1.fi>
+# Copyright(c) 2011 - 2014 Intel Mobile Communications GmbH.
+# Copyright(c) 2011 - 2014 Intel Corporation. All rights reserved.
+#
+# Contact Information:
+# Intel Linux Wireless <ilw@linux.intel.com>
+# Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+#
 # This software may be distributed under the terms of the BSD license.
 # See README for more details.
 #
