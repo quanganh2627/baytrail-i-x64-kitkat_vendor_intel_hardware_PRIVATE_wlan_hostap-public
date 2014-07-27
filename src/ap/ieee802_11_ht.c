@@ -1,7 +1,8 @@
 /*
  * hostapd / IEEE 802.11n HT
  * Copyright (c) 2002-2009, Jouni Malinen <j@w1.fi>
- * Copyright (c) 2007-2008, Intel Corporation
+ * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH.
+ * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.

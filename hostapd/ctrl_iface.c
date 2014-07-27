@@ -1,6 +1,8 @@
 /*
  * hostapd / UNIX domain socket -based control interface
  * Copyright (c) 2004-2014, Jouni Malinen <j@w1.fi>
+ * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH.
+ * Copyright(c) 2011 - 2014 Intel Corporation. All rights reserved.
  *
  * This software may be distributed under the terms of the BSD license.
  * See README for more details.

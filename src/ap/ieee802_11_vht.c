@@ -1,6 +1,8 @@
 /*
  * hostapd / IEEE 802.11ac VHT
  * Copyright (c) 2002-2009, Jouni Malinen <j@w1.fi>
+ * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH.
+ * Copyright(c) 2011 - 2014 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of BSD license
