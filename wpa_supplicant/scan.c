@@ -1979,7 +1979,7 @@ int wpa_supplicant_stop_pno(struct wpa_supplicant *wpa_s)
 	int ret = 0;
 
 	if (!wpa_s->pno)
-		return 0;
+		goto out;
 
 	ret = wpa_supplicant_stop_sched_scan(wpa_s);
 	wpa_s->sched_scan_stop_req = 1;
@@ -1987,6 +1987,7 @@ int wpa_supplicant_stop_pno(struct wpa_supplicant *wpa_s)
 	wpa_s->pno = 0;
 	wpa_s->pno_sched_pending = 0;
 
+out:
 	if (wpa_s->wpa_state == WPA_SCANNING)
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
 
