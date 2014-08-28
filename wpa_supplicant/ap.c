@@ -539,7 +539,7 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 	struct wpa_supplicant *ifs;
 	const u8 *wmm_ie = NULL;
 	struct wmm_parameter_element *wmm_params;
-	int i;
+	int wmm_ac;
 
 	/* Find a managed interface that is also associated */
 	dl_list_for_each(ifs, &wpa_s->radio->ifaces, struct wpa_supplicant,
@@ -585,9 +585,11 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 		   ifs->ifname);
 
 	wmm_params = (struct wmm_parameter_element *)(wmm_ie + 2);
-	for (i = 0; i < 4; i++) {
-		struct wmm_ac_parameter *ac = &(wmm_params->ac[i]);
-
+	for (wmm_ac = 0; wmm_ac < 4; wmm_ac++) {
+		struct wmm_ac_parameter *ac = &wmm_params->ac[wmm_ac];
+		struct hostapd_wmm_ac_params *wmm_ac_param =
+			&wpa_s->ap_iface->conf->wmm_ac_params[wmm_ac];
+		struct hostapd_tx_queue_params *queue_param;
 		int aifs = ac->aci_aifsn & WMM_AC_AIFSN_MASK;
 		int acw_min = (ac->cw & WMM_AC_ECWMIN_MASK) >>
 			WMM_AC_ECWMIN_SHIFT;
@@ -596,42 +598,30 @@ static int wpas_get_bss_wmm_parameters(struct wpa_supplicant *wpa_s)
 
 		int txop_limit = le_to_host16(ac->txop_limit);
 
-		wpa_s->ap_iface->conf->wmm_ac_params[i].cwmin = acw_min;
-		wpa_s->ap_iface->conf->wmm_ac_params[i].cwmax = acw_max;
-		wpa_s->ap_iface->conf->wmm_ac_params[i].aifs = aifs;
-		wpa_s->ap_iface->conf->wmm_ac_params[i].txop_limit = txop_limit;
+		wmm_ac_param->cwmin = acw_min;
+		wmm_ac_param->cwmax = acw_max;
+		wmm_ac_param->aifs = aifs;
+		wmm_ac_param->txop_limit = txop_limit;
 
-		wpa_s->ap_iface->conf->tx_queue[i].aifs = aifs;
-		wpa_s->ap_iface->conf->tx_queue[i].burst =
-			(txop_limit * 32) / 100;
-
-		switch (i) {
-		case 0:
-			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
-				ecw2cw(acw_min);
-			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
-				ecw2cw(acw_max);
+		switch (wmm_ac) {
+		case WMM_AC_BE:
+			queue_param = &wpa_s->ap_iface->conf->tx_queue[2];
 			break;
-		case 1:
-			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
-				ecw2cw(acw_min);
-			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
-				4 * (ecw2cw(acw_min) + 1) - 1;
+		case WMM_AC_BK:
+			queue_param = &wpa_s->ap_iface->conf->tx_queue[3];
 			break;
-		case 2:
-			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
-				(ecw2cw(acw_min) + 1) / 2 - 1;
-			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
-				ecw2cw(acw_min);
+		case WMM_AC_VI:
+			queue_param = &wpa_s->ap_iface->conf->tx_queue[1];
 			break;
-
-		case 3:
-			wpa_s->ap_iface->conf->tx_queue[i].cwmin =
-				(ecw2cw(acw_min) + 1) / 4 - 1;
-			wpa_s->ap_iface->conf->tx_queue[i].cwmax =
-				(ecw2cw(acw_min) + 1) / 2 - 1;
+		case WMM_AC_VO:
+			queue_param = &wpa_s->ap_iface->conf->tx_queue[0];
 			break;
 		}
+
+		queue_param->cwmin = ecw2cw(acw_min);
+		queue_param->cwmax = ecw2cw(acw_max);
+		queue_param->aifs = aifs;
+		queue_param->burst = (txop_limit * 32) / 100;
 	}
 
 #undef ecw2cw
