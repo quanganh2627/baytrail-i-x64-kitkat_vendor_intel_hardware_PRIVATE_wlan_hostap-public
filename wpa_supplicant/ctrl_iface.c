@@ -5862,9 +5862,17 @@ static void wpas_ctrl_scan(struct wpa_supplicant *wpa_s, char *params,
 			   char *reply, int reply_size, int *reply_len)
 {
 	char *pos;
+	u8 scan_only = 0;
 
 	if (wpa_s->wpa_state == WPA_INTERFACE_DISABLED) {
 		*reply_len = -1;
+		return;
+	}
+
+	if (wpa_s->scanning && !wpa_s->sched_scanning) {
+		wpa_printf(MSG_DEBUG,
+			   "Ongoing scan action - reject new request");
+		*reply_len = os_snprintf(reply, reply_size, "FAIL-BUSY\n");
 		return;
 	}
 
@@ -5874,7 +5882,7 @@ static void wpas_ctrl_scan(struct wpa_supplicant *wpa_s, char *params,
 
 	if (params) {
 		if (os_strncasecmp(params, "TYPE=ONLY", 9) == 0)
-			wpa_s->scan_res_handler = scan_only_handler;
+			scan_only = 1;
 
 		pos = os_strstr(params, "freq=");
 		if (pos && set_scan_freqs(wpa_s, pos + 5) < 0) {
@@ -5899,6 +5907,9 @@ static void wpas_ctrl_scan(struct wpa_supplicant *wpa_s, char *params,
 		if (wpa_s->scan_res_handler == scan_only_handler)
 			wpa_s->scan_res_handler = NULL;
 	}
+
+	if (scan_only)
+		wpa_s->scan_res_handler = scan_only_handler;
 
 	if (!wpa_s->sched_scanning && !wpa_s->scanning &&
 	    ((wpa_s->wpa_state <= WPA_SCANNING) ||
@@ -5927,9 +5938,6 @@ static void wpas_ctrl_scan(struct wpa_supplicant *wpa_s, char *params,
 			wpa_dbg(wpa_s, MSG_DEBUG, "Assigned scan id %u",
 				wpa_s->manual_scan_id);
 		}
-	} else {
-		wpa_printf(MSG_DEBUG, "Ongoing scan action - reject new request");
-		*reply_len = os_snprintf(reply, reply_size, "FAIL-BUSY\n");
 	}
 }
 
