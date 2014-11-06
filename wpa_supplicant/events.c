@@ -1289,6 +1289,9 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 		goto scan_work_done;
 	}
 
+	if (wpa_s->last_scan_full)
+		os_get_reltime(&wpa_s->full_scan_results_time);
+
 #ifndef CONFIG_NO_RANDOM_POOL
 	num = scan_res->num;
 	if (num > 10)
@@ -1479,6 +1482,40 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 		}
 	}
 	return 0;
+}
+
+
+/**
+ * wpas_select_bss_for_current_network - select bss in the curent SSID
+ * @wpa_s: Pointer to wpa_supplicant data
+ * Returns: 0 if roaming is not needed, 1 if roaming was started successfully,
+ *	and -1 in case of an error (not connected or romaing failed to start).
+ *
+ * This function selects the preferred BSS within the current SSID and roams to
+ * it if needed.
+ */
+int wpas_select_bss_for_current_network(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_ssid *selected_ssid;
+	struct wpa_bss *bss;
+
+	if (!wpa_s->current_ssid) {
+		wpa_printf(MSG_DEBUG, "Cannot select BSS if SSID is not set");
+		return -1;
+	}
+
+	bss = wpa_supplicant_select_bss(wpa_s, wpa_s->current_ssid,
+					&selected_ssid, 1);
+	if (!bss ||
+	    !wpa_supplicant_need_to_roam(wpa_s, bss, wpa_s->current_ssid))
+		return 0;
+
+	if (wpa_supplicant_connect(wpa_s, bss, wpa_s->current_ssid) < 0) {
+		wpa_printf(MSG_DEBUG, "Connect failed");
+		return -1;
+	}
+
+	return 1;
 }
 
 

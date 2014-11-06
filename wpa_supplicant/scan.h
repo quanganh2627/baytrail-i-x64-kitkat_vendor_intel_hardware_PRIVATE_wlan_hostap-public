@@ -54,4 +54,18 @@ void wpas_scan_restart_sched_scan(struct wpa_supplicant *wpa_s);
 void wpas_scan_reset_sched_scan(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_suspend_sched_scan(struct wpa_supplicant *wpa_s);
 
+/**
+ * wpas_is_full_scan - check whether the scan params indicate a full scan
+ * @params: Scan parameters
+ * Returns: 1 if the given scan parameters include the WILDCARD SSID and no
+ *	frequencies are specified (which means all frequencies will be scanned)
+ *	and no SSID filter is set, 0 otherwise.
+ */
+static inline int wpas_is_full_scan(struct wpa_driver_scan_params *params)
+{
+	return params->freqs == NULL &&
+		params->ssids[params->num_ssids - 1].ssid == NULL &&
+		params->filter_ssids == NULL;
+}
+
 #endif /* SCAN_H */

@@ -20,6 +20,9 @@
 #include "bgscan.h"
 
 #define SIGNAL_TRACKING_MODE_THRESHOLD -82 /* used in signal tracking mode */
+#define SCAN_EXPIRED_TIME 20
+#define MAX_SCAN_DURATION 10
+#define SCAN_RESULTS_PROCESS_DURATION 2
 
 struct bgscan_simple_data {
 	struct wpa_supplicant *wpa_s;
@@ -45,6 +48,57 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 	struct bgscan_simple_data *data = eloop_ctx;
 	struct wpa_supplicant *wpa_s = data->wpa_s;
 	struct wpa_driver_scan_params params;
+	struct os_reltime trigger, results;
+	int ret, scan_interval = 0;
+
+	ret = wpas_time_from_last_full_scan(wpa_s, &trigger, &results);
+	if (ret > 0) {
+		scan_interval = data->scan_interval > MAX_SCAN_DURATION ?
+			MAX_SCAN_DURATION : data->scan_interval;
+		wpa_printf(MSG_DEBUG,
+			   "bgscan simple: Full scan in progress, try fetching scan results in %d sec",
+			   scan_interval);
+	} else if (ret == 0 && results.sec < SCAN_RESULTS_PROCESS_DURATION) {
+		scan_interval = SCAN_RESULTS_PROCESS_DURATION - results.sec;
+		wpa_printf(MSG_DEBUG,
+			   "bgscan simple: Updated scan results available, process in %d sec",
+			   scan_interval);
+	} else if (ret == 0 && results.sec < SCAN_EXPIRED_TIME &&
+		   results.sec < data->scan_interval) {
+		int res;
+
+		wpa_printf(MSG_DEBUG,
+			   "bgscan simple: Updated scan results available, continue to AP selection");
+		res = wpas_select_bss_for_current_network(wpa_s);
+		if (res < 0) {
+			wpa_printf(MSG_DEBUG,
+				   "bgscan simple: AP selection failed, request new scan");
+		} else if (res == 0) {
+			struct os_reltime now;
+
+			/*
+			 * The last full scan is used also as a background scan,
+			 * so set bgscan timeout according to full scan trigger
+			 * time.
+			 */
+			os_get_reltime(&now);
+			os_reltime_sub(&now, &trigger, &data->last_bgscan);
+			scan_interval = data->scan_interval > trigger.sec ?
+				data->scan_interval - trigger.sec : 0;
+		} else {
+			/*
+			 * Bgscan triggered roaming, so bgscan will be
+			 * de-initialized anyway.
+			 */
+			return;
+		}
+	}
+
+	if (scan_interval) {
+		eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout,
+				       data, NULL);
+		return;
+	}
 
 	os_memset(&params, 0, sizeof(params));
 	params.num_ssids = 1;
