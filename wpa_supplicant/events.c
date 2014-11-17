@@ -1486,6 +1486,17 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 				return 0;
 			}
 #endif /* CONFIG_WPS */
+			if (wpa_s->auto_reconnect_disabled) {
+				/*
+				 * Auto reconnect is disabled so stay
+				 * disconnected and do not try another scan.
+				 */
+				wpa_s->disconnected = 1;
+				wpa_printf(MSG_DEBUG,
+					   "Auto connect disabled: do not try to re-connect");
+				return 0;
+			}
+
 			if (wpa_supplicant_req_sched_scan(wpa_s))
 				wpa_supplicant_req_new_scan(wpa_s, timeout_sec,
 							    timeout_usec);
