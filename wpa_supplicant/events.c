@@ -1200,7 +1200,7 @@ static int wpa_supplicant_need_to_roam(struct wpa_supplicant *wpa_s,
 	if (!current_bss)
 		return 1; /* current BSS not seen in scan results */
 
-	if (current_bss == selected)
+	if (wpa_s->no_roam || current_bss == selected)
 		return 0;
 
 	if (selected->last_update_idx > current_bss->last_update_idx)
@@ -1399,7 +1399,7 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 	selected = wpa_supplicant_pick_network(wpa_s, &ssid);
 
 	if (selected) {
-		int skip;
+		int skip, roam;
 		skip = !wpa_supplicant_need_to_roam(wpa_s, selected, ssid);
 		if (skip) {
 			if (new_scan)
@@ -1407,10 +1407,20 @@ static int wpas_select_network_from_last_scan(struct wpa_supplicant *wpa_s,
 			return 0;
 		}
 
+		roam = ssid == wpa_s->current_ssid &&
+			selected != wpa_s->current_bss;
+
 		if (wpa_supplicant_connect(wpa_s, selected, ssid) < 0) {
 			wpa_dbg(wpa_s, MSG_DEBUG, "Connect failed");
 			return -1;
 		}
+
+		if (roam && !ssid->bssid_set)
+			os_get_reltime(&wpa_s->last_roam);
+		else if (ssid->bssid_set)
+			os_memcpy(wpa_s->last_forced_bssid, ssid->bssid,
+				  ETH_ALEN);
+
 		if (new_scan)
 			wpa_supplicant_rsn_preauth_scan_results(wpa_s);
 		/*
@@ -1514,6 +1524,17 @@ int wpas_select_bss_for_current_network(struct wpa_supplicant *wpa_s)
 		wpa_printf(MSG_DEBUG, "Connect failed");
 		return -1;
 	}
+
+	if (!selected_ssid->bssid_set)
+		os_get_reltime(&wpa_s->last_roam);
+	else
+		/*
+		 * It is possible that the bssid was set after wpa_supplicant
+		 * connected to another bss, which forced wpa_supplicant to
+		 * select this bssid and roam.
+		 */
+		os_memcpy(wpa_s->last_forced_bssid, selected_ssid->bssid,
+			  ETH_ALEN);
 
 	return 1;
 }

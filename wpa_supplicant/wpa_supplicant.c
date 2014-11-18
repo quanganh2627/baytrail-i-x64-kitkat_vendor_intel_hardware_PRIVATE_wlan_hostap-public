@@ -732,6 +732,9 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 	if (wpa_s->wpa_state != old_state) {
 		wpas_notify_state_changed(wpa_s, wpa_s->wpa_state, old_state);
 
+	if (wpa_s->wpa_state < WPA_AUTHENTICATING)
+		wpa_s->no_roam = 0;
+
 #ifdef CONFIG_P2P
 		/* notify the P2P Device interface about a state change in one
 		 * of the interfaces */
@@ -4621,6 +4624,7 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 	return 0;
 }
 
+#define ROAM_INTERVAL 20
 
 /**
  * wpas_request_connection - Request a new connection
@@ -4632,11 +4636,35 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
  */
 void wpas_request_connection(struct wpa_supplicant *wpa_s)
 {
+	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	struct wpa_bss *bss = wpa_s->current_bss;
+	struct os_reltime now, passed;
+
 	wpa_s->normal_scans = 0;
 	wpa_supplicant_reinit_autoscan(wpa_s);
 	wpa_s->extra_blacklist_count = 0;
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
+
+	os_get_reltime(&now);
+	os_reltime_sub(&now, &wpa_s->last_roam, &passed);
+
+	/*
+	 * If wpa_supplicant just (<20 sec) roamed and already received an
+	 * explicit request to connect to the same BSS it roamed from, disable
+	 * roaming to prevent wpa_supplicant from trying to roam to its
+	 * preferred BSS again. When wpa_supplicant receives a reassociation
+	 * request and the bssid is not set in the network configuration which
+	 * indicates no BSS is forced, roaming will be resumed.
+	 */
+	if (ssid && ssid->bssid_set && bss &&
+	    os_memcmp(ssid->bssid, bss->bssid, ETH_ALEN) != 0 &&
+	    os_memcmp(ssid->bssid, wpa_s->last_forced_bssid, ETH_ALEN) == 0 &&
+	    os_reltime_initialized(&wpa_s->last_roam) &&
+	    passed.sec < ROAM_INTERVAL)
+			wpa_s->no_roam = 1;
+	else if (!ssid || !ssid->bssid_set)
+		wpa_s->no_roam = 0;
 
 	if (wpa_supplicant_fast_associate(wpa_s) != 1)
 		wpa_supplicant_req_scan(wpa_s, 0, 0);

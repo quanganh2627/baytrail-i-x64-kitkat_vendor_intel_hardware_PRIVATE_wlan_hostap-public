@@ -431,6 +431,7 @@ struct wpa_supplicant {
 	int countermeasures;
 	struct os_reltime last_michael_mic_error;
 	u8 bssid[ETH_ALEN];
+	u8 last_forced_bssid[ETH_ALEN];
 	u8 pending_bssid[ETH_ALEN]; /* If wpa_state == WPA_ASSOCIATING, this
 				     * field contains the target BSSID. */
 	int reassociate; /* reassociation requested */
@@ -440,6 +441,9 @@ struct wpa_supplicant {
 	struct wpa_bss *current_bss;
 	int ap_ies_from_associnfo;
 	unsigned int assoc_freq;
+	struct os_reltime last_roam; /* time of the last roam initiated
+				      * by wpa_supplicant */
+	unsigned int no_roam:1;
 
 	/* Selected configuration (based on Beacon/ProbeResp WPA IE) */
 	int pairwise_cipher;
