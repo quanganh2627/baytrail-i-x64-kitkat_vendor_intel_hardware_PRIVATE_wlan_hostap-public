@@ -23,6 +23,9 @@
 #define SCAN_EXPIRED_TIME 20
 #define MAX_SCAN_DURATION 10
 #define SCAN_RESULTS_PROCESS_DURATION 2
+#define INTERVAL_COUNT_THRESHOLD 5
+#define INTERVAL_DIFF	5
+#define MIN_BGSCAN_INTERVAL	(data->scan_interval * 80 / 100)
 
 struct bgscan_simple_data {
 	struct wpa_supplicant *wpa_s;
@@ -33,7 +36,9 @@ struct bgscan_simple_data {
 	int max_short_scans; /* maximum times we short-scan before back-off */
 	int short_interval; /* use if signal < threshold */
 	int long_interval; /* use if signal > threshold */
-	struct os_reltime last_bgscan;
+	struct os_reltime last_bgscan, last_full_scan;
+	int full_scan_interval;
+	int interval_count;
 
 	/*
 	 * In signal tracking mode, scan is not done periodically, but
@@ -41,6 +46,36 @@ struct bgscan_simple_data {
 	 */
 	unsigned int signal_tracking_mode;
 };
+
+static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx);
+
+static void bgscan_simple_register_timeout(struct bgscan_simple_data *data,
+					   int scan_interval)
+{
+	struct os_reltime now, trigger_age, bgscan_age;
+	int next_full_scan;
+
+	/*
+	 * If full scan was triggered periodically more than
+	 * INTERVAL_COUNT_THRESHOLD, it is likely that another full scan will
+	 * be triggered after the same interval again. Set the next bgscan
+	 * timeout to MAX_SCAN_DURATION after the next expected full scan so
+	 * bgscan will use the scan results from the full scan instead of
+	 * triggering a new scan.
+	 */
+	os_get_reltime(&now);
+	os_reltime_sub(&now, &data->last_full_scan, &trigger_age);
+	os_reltime_sub(&now, &data->last_bgscan, &bgscan_age);
+	next_full_scan = data->full_scan_interval - trigger_age.sec;
+	if (data->interval_count >= INTERVAL_COUNT_THRESHOLD &&
+	    next_full_scan > 0 &&
+	    (next_full_scan + bgscan_age.sec) >= MIN_BGSCAN_INTERVAL &&
+	    next_full_scan < scan_interval)
+		scan_interval = next_full_scan + MAX_SCAN_DURATION;
+
+	eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout, data,
+			       NULL);
+}
 
 
 static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
@@ -95,8 +130,7 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 	}
 
 	if (scan_interval) {
-		eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout,
-				       data, NULL);
+		bgscan_simple_register_timeout(data, scan_interval);
 		return;
 	}
 
@@ -115,8 +149,7 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 	wpa_printf(MSG_DEBUG, "bgscan simple: Request a background scan");
 	if (wpa_supplicant_trigger_scan(wpa_s, &params)) {
 		wpa_printf(MSG_DEBUG, "bgscan simple: Failed to trigger scan");
-		eloop_register_timeout(data->scan_interval, 0,
-				       bgscan_simple_timeout, data, NULL);
+		bgscan_simple_register_timeout(data, data->scan_interval);
 	} else {
 		if (data->scan_interval == data->short_interval) {
 			data->short_scan_count++;
@@ -259,8 +292,7 @@ static int bgscan_simple_notify_scan(void *priv,
 
 	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
 	if (!data->signal_tracking_mode)
-		eloop_register_timeout(data->scan_interval, 0,
-				       bgscan_simple_timeout, data, NULL);
+		bgscan_simple_register_timeout(data, data->scan_interval);
 
 	/*
 	 * A more advanced bgscan could process scan results internally, select
@@ -336,17 +368,15 @@ static void bgscan_simple_notify_signal_change(void *priv, int above,
 			 */
 			eloop_cancel_timeout(bgscan_simple_timeout, data,
 					     NULL);
-			eloop_register_timeout(data->scan_interval, 0,
-					       bgscan_simple_timeout, data,
-					       NULL);
+			bgscan_simple_register_timeout(data,
+						       data->scan_interval);
 		}
 	} else if (data->scan_interval == data->short_interval && above) {
 		wpa_printf(MSG_DEBUG, "bgscan simple: Start using long bgscan "
 			   "interval");
 		data->scan_interval = data->long_interval;
 		eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
-		eloop_register_timeout(data->scan_interval, 0,
-				       bgscan_simple_timeout, data, NULL);
+		bgscan_simple_register_timeout(data, data->scan_interval);
 	} else if (!above) {
 		/*
 		 * Signal dropped further 4 dB. Request a new scan if we have
@@ -411,8 +441,7 @@ static void bgscan_simple_normal_mode(struct bgscan_simple_data *data)
 			(now.sec - data->last_bgscan.sec);
 	else
 		scan_interval = 0;
-	eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout, data,
-			       NULL);
+	bgscan_simple_register_timeout(data, scan_interval);
 	wpa_printf(MSG_DEBUG, "bgscan_simple: Start periodic mode");
 }
 
@@ -437,6 +466,30 @@ static void bgscan_simple_notify_tcm_changed(void *priv,
 		bgscan_simple_normal_mode(data);
 }
 
+static void
+bgscan_simple_notify_scan_trigger(void *priv,
+				  struct wpa_driver_scan_params *params)
+{
+	struct bgscan_simple_data *data = priv;
+	struct os_reltime prev_full_scan, interval;
+
+	if (!wpas_is_full_scan(params))
+		return;
+
+	prev_full_scan = data->last_full_scan;
+	os_get_reltime(&data->last_full_scan);
+	if (!os_reltime_initialized(&prev_full_scan))
+		return;
+
+	os_reltime_sub(&data->last_full_scan, &prev_full_scan, &interval);
+	if (abs(interval.sec - data->full_scan_interval) < INTERVAL_DIFF) {
+		data->interval_count++;
+	} else {
+		data->interval_count = 1;
+		data->full_scan_interval = interval.sec;
+	}
+}
+
 const struct bgscan_ops bgscan_simple_ops = {
 	.name = "simple",
 	.init = bgscan_simple_init,
@@ -445,4 +498,5 @@ const struct bgscan_ops bgscan_simple_ops = {
 	.notify_beacon_loss = bgscan_simple_notify_beacon_loss,
 	.notify_signal_change = bgscan_simple_notify_signal_change,
 	.notify_tcm_changed = bgscan_simple_notify_tcm_changed,
+	.notify_scan_trigger = bgscan_simple_notify_scan_trigger,
 };
