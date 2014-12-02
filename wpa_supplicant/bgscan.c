@@ -126,3 +126,11 @@ void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
 		wpa_s->bgscan->notify_tcm_changed(wpa_s->bgscan_priv,
 						  traffic_load, vi_vo_present);
 }
+
+void bgscan_notify_scan_trigger(struct wpa_supplicant *wpa_s,
+				struct wpa_driver_scan_params *params)
+{
+	if (wpa_s->bgscan && wpa_s->bgscan_priv)
+		wpa_s->bgscan->notify_scan_trigger(wpa_s->bgscan_priv, params);
+}
+

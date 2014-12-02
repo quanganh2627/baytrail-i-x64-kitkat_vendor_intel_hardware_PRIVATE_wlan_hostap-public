@@ -30,6 +30,8 @@ struct bgscan_ops {
 	void (*notify_tcm_changed)(void *priv,
 				   enum traffic_load traffic_load,
 				   int vi_vo_present);
+	void (*notify_scan_trigger)(void *priv,
+				    struct wpa_driver_scan_params *params);
 };
 
 #ifdef CONFIG_BGSCAN
@@ -46,6 +48,8 @@ void bgscan_notify_signal_change(struct wpa_supplicant *wpa_s, int above,
 void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
 			       enum traffic_load traffic_load,
 			       int vi_vo_present);
+void bgscan_notify_scan_trigger(struct wpa_supplicant *wpa_s,
+				struct wpa_driver_scan_params *params);
 
 #else /* CONFIG_BGSCAN */
 
@@ -79,6 +83,12 @@ static inline void bgscan_notify_signal_change(struct wpa_supplicant *wpa_s,
 static inline void bgscan_notify_tcm_changed(struct wpa_supplicant *wpa_s,
 					     enum traffic_load traffic_load,
 					     int vi_vo_present)
+{
+}
+
+static inline
+void bgscan_notify_scan_trigger(struct wpa_supplicant *wpa_s,
+				struct wpa_driver_scan_params *params)
 {
 }
 
