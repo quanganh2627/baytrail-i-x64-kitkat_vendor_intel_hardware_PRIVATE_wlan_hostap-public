@@ -1378,7 +1378,7 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	}
 
 	if (!wpas_driver_bss_selection(wpa_s) &&
-	    bgscan_notify_scan(wpa_s, scan_res) == 1)
+	    bgscan_notify_scan(wpa_s, scan_res, 0) == 1)
 		goto scan_work_done;
 
 	wpas_wps_update_ap_info(wpa_s, scan_res);

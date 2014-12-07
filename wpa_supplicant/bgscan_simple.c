@@ -284,11 +284,19 @@ static void bgscan_simple_deinit(void *priv)
 
 
 static int bgscan_simple_notify_scan(void *priv,
-				     struct wpa_scan_results *scan_res)
+				     struct wpa_scan_results *scan_res,
+				     int notify_only)
 {
 	struct bgscan_simple_data *data = priv;
 
 	wpa_printf(MSG_DEBUG, "bgscan simple: scan result notification");
+
+	/*
+	 * TODO: Use scan results notifications along with scan trigger
+	 * notifications to track ongoing scans and avoid redundant scans.
+	 */
+	if (notify_only)
+		return 0;
 
 	eloop_cancel_timeout(bgscan_simple_timeout, data, NULL);
 	if (!data->signal_tracking_mode)

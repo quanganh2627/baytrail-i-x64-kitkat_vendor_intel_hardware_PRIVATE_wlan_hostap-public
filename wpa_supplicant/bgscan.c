@@ -91,11 +91,12 @@ void bgscan_deinit(struct wpa_supplicant *wpa_s)
 
 
 int bgscan_notify_scan(struct wpa_supplicant *wpa_s,
-		       struct wpa_scan_results *scan_res)
+		       struct wpa_scan_results *scan_res,
+		       int notify_only)
 {
 	if (wpa_s->bgscan && wpa_s->bgscan_priv)
 		return wpa_s->bgscan->notify_scan(wpa_s->bgscan_priv,
-						  scan_res);
+						  scan_res, notify_only);
 	return 0;
 }
 

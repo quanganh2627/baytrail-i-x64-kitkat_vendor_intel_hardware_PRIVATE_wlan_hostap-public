@@ -484,13 +484,22 @@ static int bgscan_learn_bss_match(struct bgscan_learn_data *data,
 
 
 static int bgscan_learn_notify_scan(void *priv,
-				    struct wpa_scan_results *scan_res)
+				    struct wpa_scan_results *scan_res,
+				    int notify_only)
 {
 	struct bgscan_learn_data *data = priv;
 	size_t i, j;
 #define MAX_BSS 50
 	u8 bssid[MAX_BSS * ETH_ALEN];
 	size_t num_bssid = 0;
+
+	/*
+	 * If AP selection did not run on this scan results, do not cancel
+	 * bgscan timeout. It is needed so that AP selection will run on the
+	 * requested bgscan interval.
+	 */
+	if (notify_only)
+		return 0;
 
 	wpa_printf(MSG_DEBUG, "bgscan learn: scan result notification");
 

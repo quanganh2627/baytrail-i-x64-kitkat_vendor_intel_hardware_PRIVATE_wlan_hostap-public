@@ -13,5 +13,5 @@
 #define VERSION_STR_POSTFIX ""
 #endif /* VERSION_STR_POSTFIX */
 
-#define VERSION_STR "hostap-public:release/LinuxCore5:1:abcdf29f" VERSION_STR_POSTFIX
+#define VERSION_STR "hostap-public:release/LinuxCore5:1:72b0c101" VERSION_STR_POSTFIX
 #endif /* VERSION_H */

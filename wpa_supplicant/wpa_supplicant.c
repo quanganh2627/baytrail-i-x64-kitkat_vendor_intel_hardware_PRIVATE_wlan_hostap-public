@@ -608,7 +608,7 @@ static void wpa_supplicant_start_bgscan(struct wpa_supplicant *wpa_s)
 			scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL,
 								   0);
 			if (scan_res) {
-				bgscan_notify_scan(wpa_s, scan_res);
+				bgscan_notify_scan(wpa_s, scan_res, 0);
 				wpa_scan_results_free(scan_res);
 			}
 		}
