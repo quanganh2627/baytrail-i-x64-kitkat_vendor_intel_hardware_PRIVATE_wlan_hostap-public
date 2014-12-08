@@ -85,10 +85,15 @@ INCLUDES += external/openssl/include
 INCLUDES += system/security/keystore
 
 # Add support for older android versions
+VERSION_MAJOR := $(shell echo $(PLATFORM_VERSION) | cut -f1 -d.)
+VER_4XX := $(shell [ $(VERSION_MAJOR) -lt 5 ] && echo true)
+ifeq ($(VER_4XX),true)
+L_CFLAGS += -DANDROID4XX
 ifeq ($(PLATFORM_VERSION), 4.2.2)
 INCLUDES += frameworks/base/cmds/keystore
 INCLUDES += system/security/keystore/include/keystore
 L_CFLAGS += -DANDROID422
+endif
 endif
 
 ifdef CONFIG_DRIVER_NL80211
