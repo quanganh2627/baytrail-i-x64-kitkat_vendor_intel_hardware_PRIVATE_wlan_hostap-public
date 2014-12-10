@@ -36,9 +36,17 @@ struct bgscan_simple_data {
 	int max_short_scans; /* maximum times we short-scan before back-off */
 	int short_interval; /* use if signal < threshold */
 	int long_interval; /* use if signal > threshold */
-	struct os_reltime last_bgscan, last_full_scan;
+	struct os_reltime last_bgscan;
+	struct os_reltime last_full_scan_trigger, last_full_scan_results;
 	int full_scan_interval;
 	int interval_count;
+	int ongoing_full_scan;
+
+	/* Maximun full scan duration. Calculated according to previous scans */
+	int scan_duration;
+
+	/* Whether bgscan should run AP selection on the next scan results */
+	int process_results;
 
 	/*
 	 * In signal tracking mode, scan is not done periodically, but
@@ -59,19 +67,19 @@ static void bgscan_simple_register_timeout(struct bgscan_simple_data *data,
 	 * If full scan was triggered periodically more than
 	 * INTERVAL_COUNT_THRESHOLD, it is likely that another full scan will
 	 * be triggered after the same interval again. Set the next bgscan
-	 * timeout to MAX_SCAN_DURATION after the next expected full scan so
+	 * timeout to scan_duration after the next expected full scan so
 	 * bgscan will use the scan results from the full scan instead of
 	 * triggering a new scan.
 	 */
 	os_get_reltime(&now);
-	os_reltime_sub(&now, &data->last_full_scan, &trigger_age);
+	os_reltime_sub(&now, &data->last_full_scan_trigger, &trigger_age);
 	os_reltime_sub(&now, &data->last_bgscan, &bgscan_age);
 	next_full_scan = data->full_scan_interval - trigger_age.sec;
 	if (data->interval_count >= INTERVAL_COUNT_THRESHOLD &&
 	    next_full_scan > 0 &&
 	    (next_full_scan + bgscan_age.sec) >= MIN_BGSCAN_INTERVAL &&
 	    next_full_scan < scan_interval)
-		scan_interval = next_full_scan + MAX_SCAN_DURATION;
+		scan_interval = next_full_scan + data->scan_duration;
 
 	eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout, data,
 			       NULL);
@@ -83,49 +91,56 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 	struct bgscan_simple_data *data = eloop_ctx;
 	struct wpa_supplicant *wpa_s = data->wpa_s;
 	struct wpa_driver_scan_params params;
-	struct os_reltime trigger, results;
-	int ret, scan_interval = 0;
+	int scan_interval = 0;
 
-	ret = wpas_time_from_last_full_scan(wpa_s, &trigger, &results);
-	if (ret > 0) {
-		scan_interval = data->scan_interval > MAX_SCAN_DURATION ?
-			MAX_SCAN_DURATION : data->scan_interval;
+	if (data->ongoing_full_scan) {
+		data->process_results = 1;
 		wpa_printf(MSG_DEBUG,
-			   "bgscan simple: Full scan in progress, try fetching scan results in %d sec",
-			   scan_interval);
-	} else if (ret == 0 && results.sec < SCAN_RESULTS_PROCESS_DURATION) {
-		scan_interval = SCAN_RESULTS_PROCESS_DURATION - results.sec;
-		wpa_printf(MSG_DEBUG,
-			   "bgscan simple: Updated scan results available, process in %d sec",
-			   scan_interval);
-	} else if (ret == 0 && results.sec < SCAN_EXPIRED_TIME &&
-		   results.sec < data->scan_interval) {
-		int res;
+			   "bgscan simple: Wait for full scan results");
+		return;
+	} else if (os_reltime_initialized(&data->last_full_scan_results)) {
+		struct os_reltime passed, now;
 
-		wpa_printf(MSG_DEBUG,
-			   "bgscan simple: Updated scan results available, continue to AP selection");
-		res = wpas_select_bss_for_current_network(wpa_s);
-		if (res < 0) {
+		os_get_reltime(&now);
+		os_reltime_sub(&now, &data->last_full_scan_results,
+			       &passed);
+		if (passed.sec < SCAN_RESULTS_PROCESS_DURATION) {
+			scan_interval =
+				SCAN_RESULTS_PROCESS_DURATION - passed.sec;
 			wpa_printf(MSG_DEBUG,
-				   "bgscan simple: AP selection failed, request new scan");
-		} else if (res == 0) {
-			struct os_reltime now;
+				   "bgscan simple: Process updated scan results in %d sec",
+				   scan_interval);
+		} else if (passed.sec < SCAN_EXPIRED_TIME &&
+			   passed.sec < data->scan_interval) {
+			int res;
 
-			/*
-			 * The last full scan is used also as a background scan,
-			 * so set bgscan timeout according to full scan trigger
-			 * time.
-			 */
-			os_get_reltime(&now);
-			os_reltime_sub(&now, &trigger, &data->last_bgscan);
-			scan_interval = data->scan_interval > trigger.sec ?
-				data->scan_interval - trigger.sec : 0;
-		} else {
-			/*
-			 * Bgscan triggered roaming, so bgscan will be
-			 * de-initialized anyway.
-			 */
-			return;
+			wpa_printf(MSG_DEBUG,
+				   "bgscan simple: Run Ap selection on updated scan results");
+			res = wpas_select_bss_for_current_network(wpa_s);
+			if (res < 0) {
+				wpa_printf(MSG_DEBUG,
+					   "bgscan simple: AP selection failed, request new scan");
+			} else if (res == 0) {
+				/*
+				 * The last full scan is used also as a
+				 * background scan, so set bgscan timeout
+				 * according to full scan time.
+				 */
+				data->last_bgscan =
+					data->last_full_scan_trigger;
+				if (data->signal_tracking_mode)
+					return;
+
+				scan_interval =
+					data->scan_interval > passed.sec ?
+					data->scan_interval - passed.sec : 0;
+			} else {
+				/*
+				 * Bgscan triggered roaming, so bgscan will be
+				 * de-initialized anyway.
+				 */
+				return;
+			}
 		}
 	}
 
@@ -291,10 +306,23 @@ static int bgscan_simple_notify_scan(void *priv,
 
 	wpa_printf(MSG_DEBUG, "bgscan simple: scan result notification");
 
-	/*
-	 * TODO: Use scan results notifications along with scan trigger
-	 * notifications to track ongoing scans and avoid redundant scans.
-	 */
+	if (data->ongoing_full_scan && scan_res != NULL) {
+		struct os_reltime scan_duration;
+
+		os_get_reltime(&data->last_full_scan_results);
+		os_reltime_sub(&data->last_full_scan_results,
+			       &data->last_full_scan_trigger, &scan_duration);
+		if (scan_duration.sec > data->scan_duration)
+			data->scan_duration = scan_duration.sec;
+	}
+
+	data->ongoing_full_scan = 0;
+	if (data->process_results) {
+		eloop_register_timeout(0, 0, bgscan_simple_timeout, data, NULL);
+		data->process_results = 0;
+		return 0;
+	}
+
 	if (notify_only)
 		return 0;
 
@@ -481,15 +509,25 @@ bgscan_simple_notify_scan_trigger(void *priv,
 	struct bgscan_simple_data *data = priv;
 	struct os_reltime prev_full_scan, interval;
 
-	if (!wpas_is_full_scan(params))
+	/*
+	 * Use only scans that include the WILDCARD SSID and does not filter
+	 * ssids to make sure the current SSID is not filtered out. In addition,
+	 * use only scans that include all frequencies so all roaming candidates
+	 * are found.
+	 */
+	if (params->freqs != NULL ||
+	    params->ssids[params->num_ssids - 1].ssid != NULL ||
+	    params->filter_ssids != NULL)
 		return;
 
-	prev_full_scan = data->last_full_scan;
-	os_get_reltime(&data->last_full_scan);
+	data->ongoing_full_scan = 1;
+	prev_full_scan = data->last_full_scan_trigger;
+	os_get_reltime(&data->last_full_scan_trigger);
 	if (!os_reltime_initialized(&prev_full_scan))
 		return;
 
-	os_reltime_sub(&data->last_full_scan, &prev_full_scan, &interval);
+	os_reltime_sub(&data->last_full_scan_trigger, &prev_full_scan,
+		       &interval);
 	if (abs(interval.sec - data->full_scan_interval) < INTERVAL_DIFF) {
 		data->interval_count++;
 	} else {

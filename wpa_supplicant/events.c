@@ -1292,9 +1292,6 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 		goto scan_work_done;
 	}
 
-	if (wpa_s->last_scan_full)
-		os_get_reltime(&wpa_s->full_scan_results_time);
-
 #ifndef CONFIG_NO_RANDOM_POOL
 	num = scan_res->num;
 	if (num > 10)

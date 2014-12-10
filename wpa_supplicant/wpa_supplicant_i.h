@@ -574,8 +574,6 @@ struct wpa_supplicant {
 		MANUAL_SCAN_REQ
 	} scan_req, last_scan_req;
 	struct os_reltime scan_trigger_time, scan_start_time;
-	struct os_reltime full_scan_trigger_time, full_scan_results_time;
-	unsigned int last_scan_full:1;
 	int scan_runs; /* number of scan runs since WPS was started */
 	int *next_scan_freqs;
 	int *manual_scan_freqs;
@@ -1074,8 +1072,4 @@ static inline int wpas_tcm_high_traffic_changed(struct wpa_supplicant *wpa_s)
 }
 
 int wpas_select_bss_for_current_network(struct wpa_supplicant *wpa_s);
-
-int wpas_time_from_last_full_scan(struct wpa_supplicant *wpa_s,
-				  struct os_reltime *trigger,
-				  struct os_reltime *results);
 #endif /* WPA_SUPPLICANT_I_H */

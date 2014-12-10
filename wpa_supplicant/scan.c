@@ -158,7 +158,7 @@ static void wpas_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 {
 	struct wpa_supplicant *wpa_s = work->wpa_s;
 	struct wpa_driver_scan_params *params = work->ctx;
-	int ret, full_scan;
+	int ret;
 
 	if (deinit) {
 		if (!work->started) {
@@ -176,7 +176,6 @@ static void wpas_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 	if (wpa_s->clear_driver_scan_cache)
 		params->only_new_results = 1;
 	ret = wpa_drv_scan(wpa_s, params);
-	full_scan = wpas_is_full_scan(params);
 	wpa_scan_free_params(params);
 	work->ctx = NULL;
 	if (ret) {
@@ -192,10 +191,6 @@ static void wpas_trigger_scan_cb(struct wpa_radio_work *work, int deinit)
 	wpa_s->own_scan_requested = 1;
 	wpa_s->clear_driver_scan_cache = 0;
 	wpa_s->scan_work = work;
-	wpa_s->last_scan_full = full_scan;
-	if (full_scan)
-		wpa_s->full_scan_trigger_time =
-			wpa_s->scan_trigger_time;
 }
 
 
