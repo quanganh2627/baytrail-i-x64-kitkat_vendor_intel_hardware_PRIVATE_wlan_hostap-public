@@ -1279,6 +1279,16 @@ static int _wpa_supplicant_event_scan_results(struct wpa_supplicant *wpa_s,
 	scan_res = wpa_supplicant_get_scan_results(wpa_s,
 						   data ? &data->scan_info :
 						   NULL, 1);
+	/*
+	 * If scan failed, or it was an update only scan, or a custom results
+	 * handler is registered, or scan was not triggered by this interface,
+	 * notify bgscan that the scan ended, but mark it as notify only so that
+	 * bgscan will not run AP selection.
+	 */
+	if (scan_res == NULL || update_only || wpa_s->scan_res_handler ||
+	    !wpa_s->own_scan_running || wpa_s->external_scan_running)
+		bgscan_notify_scan(wpa_s, scan_res, 1);
+
 	if (scan_res == NULL) {
 		if (wpa_s->conf->ap_scan == 2 || ap ||
 		    wpa_s->scan_res_handler == scan_only_handler)
