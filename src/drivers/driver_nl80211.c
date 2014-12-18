@@ -5393,6 +5393,7 @@ static int bss_info_handler(struct nl_msg *msg, void *arg)
 	size_t ie_len, beacon_ie_len;
 	u8 *pos;
 	size_t i;
+	struct timespec spec;
 
 	nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
 		  genlmsg_attrlen(gnlh, 0), NULL);
@@ -5462,8 +5463,11 @@ static int bss_info_handler(struct nl_msg *msg, void *arg)
 		r->flags |= WPA_SCAN_QUAL_INVALID;
 	} else
 		r->flags |= WPA_SCAN_LEVEL_INVALID | WPA_SCAN_QUAL_INVALID;
-	if (bss[NL80211_BSS_TSF])
-		r->tsf = nla_get_u64(bss[NL80211_BSS_TSF]);
+	if (bss[NL80211_BSS_TSF]) {
+		clock_gettime(CLOCK_MONOTONIC, &spec);
+		r->tsf = (u64) ((spec.tv_sec*1000000) + spec.tv_nsec / 1000
+		- (u64)nla_get_u32(bss[NL80211_BSS_SEEN_MS_AGO]));
+        }
 	if (bss[NL80211_BSS_SEEN_MS_AGO])
 		r->age = nla_get_u32(bss[NL80211_BSS_SEEN_MS_AGO]);
 	r->ie_len = ie_len;
