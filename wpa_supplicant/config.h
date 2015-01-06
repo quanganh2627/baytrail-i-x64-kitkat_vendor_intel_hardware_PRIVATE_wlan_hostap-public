@@ -38,7 +38,7 @@
 #define DEFAULT_DISASSOC_LOW_ACK 1
 #define DEFAULT_SCHED_SCAN_INTERVAL 30
 
-#define DEFAULT_GLOBAL_BGSCAN "simple:64:-72:600"
+#define DEFAULT_GLOBAL_BGSCAN "simple:64:-72:300"
 
 #include "config_ssid.h"
 #include "wps/wps.h"
