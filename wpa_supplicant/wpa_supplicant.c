@@ -732,6 +732,9 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
 	if (wpa_s->wpa_state != old_state) {
 		wpas_notify_state_changed(wpa_s, wpa_s->wpa_state, old_state);
 
+	if (wpa_s->wpa_state < WPA_AUTHENTICATING)
+		wpa_s->no_roam = 0;
+
 #ifdef CONFIG_P2P
 		/* notify the P2P Device interface about a state change in one
 		 * of the interfaces */
@@ -3403,17 +3406,18 @@ void radio_work_done(struct wpa_radio_work *work)
 }
 
 
-int radio_work_pending(struct wpa_supplicant *wpa_s, const char *type)
+struct wpa_radio_work *
+radio_work_pending(struct wpa_supplicant *wpa_s, const char *type)
 {
 	struct wpa_radio_work *work;
 	struct wpa_radio *radio = wpa_s->radio;
 
 	dl_list_for_each(work, &radio->work, struct wpa_radio_work, list) {
 		if (work->wpa_s == wpa_s && os_strcmp(work->type, type) == 0)
-			return 1;
+			return work;
 	}
 
-	return 0;
+	return NULL;
 }
 
 
@@ -4620,6 +4624,7 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 	return 0;
 }
 
+#define ROAM_INTERVAL 20
 
 /**
  * wpas_request_connection - Request a new connection
@@ -4631,11 +4636,35 @@ int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
  */
 void wpas_request_connection(struct wpa_supplicant *wpa_s)
 {
+	struct wpa_ssid *ssid = wpa_s->current_ssid;
+	struct wpa_bss *bss = wpa_s->current_bss;
+	struct os_reltime now, passed;
+
 	wpa_s->normal_scans = 0;
 	wpa_supplicant_reinit_autoscan(wpa_s);
 	wpa_s->extra_blacklist_count = 0;
 	wpa_s->disconnected = 0;
 	wpa_s->reassociate = 1;
+
+	os_get_reltime(&now);
+	os_reltime_sub(&now, &wpa_s->last_roam, &passed);
+
+	/*
+	 * If wpa_supplicant just (<20 sec) roamed and already received an
+	 * explicit request to connect to the same BSS it roamed from, disable
+	 * roaming to prevent wpa_supplicant from trying to roam to its
+	 * preferred BSS again. When wpa_supplicant receives a reassociation
+	 * request and the bssid is not set in the network configuration which
+	 * indicates no BSS is forced, roaming will be resumed.
+	 */
+	if (ssid && ssid->bssid_set && bss &&
+	    os_memcmp(ssid->bssid, bss->bssid, ETH_ALEN) != 0 &&
+	    os_memcmp(ssid->bssid, wpa_s->last_forced_bssid, ETH_ALEN) == 0 &&
+	    os_reltime_initialized(&wpa_s->last_roam) &&
+	    passed.sec < ROAM_INTERVAL)
+			wpa_s->no_roam = 1;
+	else if (!ssid || !ssid->bssid_set)
+		wpa_s->no_roam = 0;
 
 	if (wpa_supplicant_fast_associate(wpa_s) != 1)
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
@@ -4934,4 +4963,42 @@ int wpas_get_used_p2p_freqs_hp(struct wpa_supplicant *wpa_s, int *freqs,
 			freqs[idx++] = ifs->assoc_freq;
 	}
 	return idx;
+}
+
+/*
+ * wpas_time_from_last_full_scan - get the time elapsed since the last full scan
+ * @wpa_s: Pointer to wpa_suplicant data
+ * @trigger: Buffer for returning the time passed since the last full scan was
+ *	triggered.
+ * @results: Buffer for returning the time passed since the last full scan
+ *	results were received.
+ * Returns: 0 on success, a negative value if last full scan time is unknown,
+ *	and a positive value if there is an ongoing or pending full scan.
+ */
+int wpas_time_from_last_full_scan(struct wpa_supplicant *wpa_s,
+				  struct os_reltime *trigger,
+				  struct os_reltime *results)
+{
+	struct os_reltime now;
+	struct wpa_radio_work *work;
+
+	if (wpa_s->scanning && wpa_s->last_scan_full)
+		return 1;
+
+	work = radio_work_pending(wpa_s, "scan");
+	if (work != NULL) {
+		struct wpa_driver_scan_params *params = work->ctx;
+
+		if (params && wpas_is_full_scan(params))
+			return 1;
+	}
+
+	if (!os_reltime_initialized(&wpa_s->full_scan_trigger_time) ||
+	    !os_reltime_initialized(&wpa_s->full_scan_results_time))
+		return -1;
+
+	os_get_reltime(&now);
+	os_reltime_sub(&now, &wpa_s->full_scan_trigger_time, trigger);
+	os_reltime_sub(&now, &wpa_s->full_scan_results_time, results);
+	return 0;
 }

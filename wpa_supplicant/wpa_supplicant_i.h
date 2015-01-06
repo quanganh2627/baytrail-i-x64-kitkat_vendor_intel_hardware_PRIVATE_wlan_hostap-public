@@ -335,7 +335,8 @@ void radio_work_done(struct wpa_radio_work *work);
 void radio_remove_works(struct wpa_supplicant *wpa_s,
 			const char *type, int remove_all);
 void radio_work_check_next(struct wpa_supplicant *wpa_s);
-int radio_work_pending(struct wpa_supplicant *wpa_s, const char *type);
+struct wpa_radio_work *
+radio_work_pending(struct wpa_supplicant *wpa_s, const char *type);
 
 struct wpa_connect_work {
 	unsigned int sme:1;
@@ -430,6 +431,7 @@ struct wpa_supplicant {
 	int countermeasures;
 	struct os_reltime last_michael_mic_error;
 	u8 bssid[ETH_ALEN];
+	u8 last_forced_bssid[ETH_ALEN];
 	u8 pending_bssid[ETH_ALEN]; /* If wpa_state == WPA_ASSOCIATING, this
 				     * field contains the target BSSID. */
 	int reassociate; /* reassociation requested */
@@ -439,6 +441,9 @@ struct wpa_supplicant {
 	struct wpa_bss *current_bss;
 	int ap_ies_from_associnfo;
 	unsigned int assoc_freq;
+	struct os_reltime last_roam; /* time of the last roam initiated
+				      * by wpa_supplicant */
+	unsigned int no_roam:1;
 
 	/* Selected configuration (based on Beacon/ProbeResp WPA IE) */
 	int pairwise_cipher;
@@ -569,6 +574,8 @@ struct wpa_supplicant {
 		MANUAL_SCAN_REQ
 	} scan_req, last_scan_req;
 	struct os_reltime scan_trigger_time, scan_start_time;
+	struct os_reltime full_scan_trigger_time, full_scan_results_time;
+	unsigned int last_scan_full:1;
 	int scan_runs; /* number of scan runs since WPS was started */
 	int *next_scan_freqs;
 	int *manual_scan_freqs;
@@ -1066,4 +1073,9 @@ static inline int wpas_tcm_high_traffic_changed(struct wpa_supplicant *wpa_s)
 		 prev_tcm_data->traffic_load == TRAFFIC_LOAD_HIGH);
 }
 
+int wpas_select_bss_for_current_network(struct wpa_supplicant *wpa_s);
+
+int wpas_time_from_last_full_scan(struct wpa_supplicant *wpa_s,
+				  struct os_reltime *trigger,
+				  struct os_reltime *results);
 #endif /* WPA_SUPPLICANT_I_H */

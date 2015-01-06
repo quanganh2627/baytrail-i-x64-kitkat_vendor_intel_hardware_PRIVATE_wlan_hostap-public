@@ -5297,6 +5297,19 @@ static int wpa_supplicant_ctrl_iface_sta_autoconnect(
 	struct wpa_supplicant *wpa_s, char *cmd)
 {
 	wpa_s->auto_reconnect_disabled = atoi(cmd) == 0 ? 1 : 0;
+	if (wpa_s->current_ssid)
+		return 0;
+
+	if (wpa_s->auto_reconnect_disabled) {
+		wpa_supplicant_cancel_sched_scan(wpa_s);
+		wpa_supplicant_cancel_delayed_sched_scan(wpa_s);
+		wpa_supplicant_cancel_scan(wpa_s);
+		wpa_s->disconnected = 1;
+	} else {
+		wpa_s->disconnected = 0;
+		if (wpa_supplicant_req_sched_scan(wpa_s))
+			wpa_supplicant_req_scan(wpa_s, 0, 0);
+	}
 	return 0;
 }
 
