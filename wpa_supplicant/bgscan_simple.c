@@ -25,7 +25,8 @@
 #define SCAN_RESULTS_PROCESS_DURATION 2
 #define INTERVAL_COUNT_THRESHOLD 5
 #define INTERVAL_DIFF	5
-#define MIN_BGSCAN_INTERVAL	(data->scan_interval * 80 / 100)
+#define MIN_BGSCAN_INTERVAL	(data->scan_interval)
+#define MAX_BGSCAN_INTERVAL	(data->scan_interval * 2)
 
 struct bgscan_simple_data {
 	struct wpa_supplicant *wpa_s;
@@ -77,8 +78,8 @@ static void bgscan_simple_register_timeout(struct bgscan_simple_data *data,
 	next_full_scan = data->full_scan_interval - trigger_age.sec;
 	if (data->interval_count >= INTERVAL_COUNT_THRESHOLD &&
 	    next_full_scan > 0 &&
-	    (next_full_scan + bgscan_age.sec) >= MIN_BGSCAN_INTERVAL &&
-	    next_full_scan < scan_interval)
+	    data->full_scan_interval >= MIN_BGSCAN_INTERVAL &&
+	    data->full_scan_interval <= MAX_BGSCAN_INTERVAL)
 		scan_interval = next_full_scan + data->scan_duration;
 
 	eloop_register_timeout(scan_interval, 0, bgscan_simple_timeout, data,
@@ -91,7 +92,6 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 	struct bgscan_simple_data *data = eloop_ctx;
 	struct wpa_supplicant *wpa_s = data->wpa_s;
 	struct wpa_driver_scan_params params;
-	int scan_interval = 0;
 
 	if (data->ongoing_full_scan) {
 		data->process_results = 1;
@@ -105,11 +105,14 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 		os_reltime_sub(&now, &data->last_full_scan_results,
 			       &passed);
 		if (passed.sec < SCAN_RESULTS_PROCESS_DURATION) {
-			scan_interval =
-				SCAN_RESULTS_PROCESS_DURATION - passed.sec;
+			int delay = SCAN_RESULTS_PROCESS_DURATION - passed.sec;
+
 			wpa_printf(MSG_DEBUG,
 				   "bgscan simple: Process updated scan results in %d sec",
-				   scan_interval);
+				   delay);
+			eloop_register_timeout(delay, 0, bgscan_simple_timeout,
+					       data, NULL);
+			return;
 		} else if (passed.sec < SCAN_EXPIRED_TIME &&
 			   passed.sec < data->scan_interval) {
 			int res;
@@ -121,6 +124,8 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 				wpa_printf(MSG_DEBUG,
 					   "bgscan simple: AP selection failed, request new scan");
 			} else if (res == 0) {
+				int scan_interval;
+
 				/*
 				 * The last full scan is used also as a
 				 * background scan, so set bgscan timeout
@@ -134,6 +139,9 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 				scan_interval =
 					data->scan_interval > passed.sec ?
 					data->scan_interval - passed.sec : 0;
+				bgscan_simple_register_timeout(data,
+							       scan_interval);
+				return;
 			} else {
 				/*
 				 * Bgscan triggered roaming, so bgscan will be
@@ -142,11 +150,6 @@ static void bgscan_simple_timeout(void *eloop_ctx, void *timeout_ctx)
 				return;
 			}
 		}
-	}
-
-	if (scan_interval) {
-		bgscan_simple_register_timeout(data, scan_interval);
-		return;
 	}
 
 	os_memset(&params, 0, sizeof(params));
