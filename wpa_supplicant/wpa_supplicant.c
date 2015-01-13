@@ -3531,7 +3531,7 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 		}
 
 #ifndef ANDROID422
-		if (iface->p2p_mgmt && !iface->ctrl_interface) {
+		if (iface->p2p_mgmt) {
 			os_free(wpa_s->conf->ctrl_interface);
 			wpa_s->conf->ctrl_interface = NULL;
 		}
