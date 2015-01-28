@@ -141,6 +141,12 @@ struct sta_info {
 #ifdef CONFIG_SAE
 	struct sae_data *sae;
 #endif /* CONFIG_SAE */
+
+	/* Last Authentication/(Re)Association Request/Action frame sequence
+	 * control */
+	u16 last_seq_ctrl;
+	/* Last Authentication/(Re)Association Request/Action frame subtype */
+	u8 last_subtype;
 };
 
 

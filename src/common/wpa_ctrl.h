@@ -15,6 +15,12 @@
 extern "C" {
 #endif
 
+#ifdef ANDROID422
+#define WPA_CLI_REPLY_SIZE 12288
+#else
+#define WPA_CLI_REPLY_SIZE 4096
+#endif /* ANDROID422 */
+
 /* wpa_supplicant control interface - fixed message prefixes */
 
 /** Interactive request for identity/password/pin */

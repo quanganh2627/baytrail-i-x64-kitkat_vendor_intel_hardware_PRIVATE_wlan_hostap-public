@@ -400,7 +400,7 @@ static void wpa_cli_msg_cb(char *msg, size_t len)
 
 static int _wpa_ctrl_command(struct wpa_ctrl *ctrl, char *cmd, int print)
 {
-	char buf[12288];
+	char buf[WPA_CLI_REPLY_SIZE];
 	size_t len;
 	int ret;
 
