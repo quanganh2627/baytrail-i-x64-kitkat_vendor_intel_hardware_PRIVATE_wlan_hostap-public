@@ -3404,8 +3404,18 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 	}
 
 	if (mask & WPA_BSS_MASK_TSF) {
+#ifdef ANDROID
+                /*
+                 * Android interprets the TSF as a device-boot relative
+                 * timestamp of the result age. The time is given in usec.
+                */
+                unsigned long long tm = bss->last_update.sec * 1000000 +
+                                        bss->last_update.usec;
+                ret = os_snprintf(pos, end - pos, "tsf=%016llu\n", tm);
+#else
 		ret = os_snprintf(pos, end - pos, "tsf=%016llu\n",
 				  (unsigned long long) bss->tsf);
+#endif
 		if (ret < 0 || ret >= end - pos)
 			return 0;
 		pos += ret;
